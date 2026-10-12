@@ -1,0 +1,127 @@
+/* Approved personnel revision: scoped to personnel/workforce, inherits themes. */
+#staffAccessCard .staff-personnel-body label{align-content:start}
+#staffAccessCard .staff-personnel-body input:not([type=checkbox]){height:48px;min-height:48px}
+#staffAccessCard .staff-personnel-dialog .staff-step{display:none}
+#staffAccessCard .staff-personnel-dialog .staff-accordion-head p{display:none}
+#staffAccessCard .staff-personnel-dialog .staff-accordion-head h4{font:inherit;font-weight:700}
+#staffAccessCard .staff-personnel-dialog .staff-accordion-head{padding:16px 0}
+#workforceTasksPanel .workforce-task-ledger-row.workforce-task-card{display:grid;border-radius:0;box-shadow:none;background:none;padding:16px 8px;grid-template-columns:minmax(120px,1.4fr) minmax(100px,1fr) minmax(110px,1fr) 100px}
+.staff-personnel-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+.staff-personnel-toolbar .staff-inline-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.staff-personnel-table{border:0;border-radius:0;overflow:hidden;margin-bottom:0;background:none;box-shadow:none}
+.staff-personnel-row{display:grid!important;grid-template-columns:minmax(150px,1.3fr) minmax(130px,1.2fr) minmax(120px,1fr) 100px 20px;gap:18px;align-items:center;width:100%;padding:20px 24px!important;text-align:left;background:transparent;color:var(--ink);border:0;border-bottom:1px solid var(--line);font:inherit;box-sizing:border-box}
+.staff-personnel-row:last-child{border-bottom:0}.staff-personnel-row:not(.staff-personnel-head){cursor:pointer}.staff-personnel-row:not(.staff-personnel-head):hover{background:var(--surface-soft)}
+.staff-personnel-head{font-weight:700;background:none;font-size:13px;color:var(--muted)}.staff-personnel-row>*{min-width:0;overflow-wrap:anywhere}.staff-personnel-row strong small{display:block;color:var(--muted);font-size:12px}
+.staff-personnel-modal[hidden]{display:none!important}.staff-personnel-modal{position:fixed;inset:0;z-index:3000;display:grid;place-items:center;padding:24px}
+.staff-personnel-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.35);backdrop-filter:blur(5px);border:0;width:100%;height:100%}
+.staff-personnel-dialog{position:relative;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:20px;width:min(720px,100%);max-height:calc(100dvh - 48px);display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.2)}
+.staff-personnel-dialog>header,.staff-personnel-dialog>footer{padding:20px 24px;display:flex;justify-content:space-between;align-items:center;gap:16px}.staff-personnel-dialog>header{border-bottom:1px solid var(--line)}.staff-personnel-dialog>footer{border-top:1px solid var(--line);flex-wrap:wrap}.staff-personnel-dialog h3{margin:0}.staff-personnel-body{padding:24px;overflow:auto;min-height:0}.staff-personnel-body .form-grid{margin:0 0 20px}.staff-personnel-body label{display:grid;gap:8px}.staff-personnel-body small{color:var(--muted);font-size:12px}.staff-personnel-dialog .staff-message{margin:0}.staff-personnel-dialog .staff-inline-actions{display:flex;gap:12px;flex-wrap:wrap}
+.staff-extra-settings{border-top:1px solid var(--line);padding:16px 0}.staff-extra-settings summary{cursor:pointer;font-weight:700;padding-bottom:12px}.staff-extra-settings>label{margin-bottom:16px}.staff-password-control{display:flex;gap:8px}.staff-password-control input{min-width:0;flex:1}.staff-password-control button{border:1px solid var(--line);background:var(--surface-soft);color:var(--ink);border-radius:10px;padding:0 12px}
+.staff-personnel-dialog .staff-step,#staffAccessCard>.staff-layout .staff-step{display:none}.staff-personnel-dialog .staff-box,#staffAccessCard #workforceTasksPanel,#staffAccessCard .workforce-accordion .staff-box{background:none;border:0;box-shadow:none;padding:0}.is-staff-personnel-open{overflow:hidden}
+#staffAccessCard>.staff-layout{display:grid;gap:16px}#staffAccessCard>.staff-layout>.staff-accordion>.staff-accordion-head p{display:none}
+#staffPersonnelAccordion>.staff-accordion-body{padding:24px}.staff-personnel-row{padding:20px 16px!important}
+.workforce-extra-options{border-top:1px solid var(--line);padding:16px 0}.workforce-extra-options>summary{font-weight:700;cursor:pointer;padding-bottom:12px}
+.workforce-task-ledger-head,.workforce-task-ledger-row{display:grid;grid-template-columns:minmax(120px,1.4fr) minmax(100px,1fr) minmax(110px,1fr) 100px;gap:14px;align-items:center;padding:16px 8px;border-bottom:1px solid var(--line)}
+.workforce-task-ledger-head{font-size:12px;font-weight:700;color:var(--muted)}.workforce-task-ledger-row{width:100%;text-align:left;color:var(--ink);background:none;border-top:0;border-left:0;border-right:0;cursor:pointer;font:inherit}.workforce-task-ledger-row>*{min-width:0;overflow-wrap:anywhere}.workforce-task-ledger-row:hover{background:var(--surface-soft)}
+#workforceShiftsPanel .workforce-shift-layout{display:block}#workforceShiftsPanel .workforce-shift-schedule{border:0;padding:0;background:none;box-shadow:none}#workforceShiftsPanel .workforce-shift-templates{width:auto;margin-top:18px}#workforceShiftsPanel .workforce-shift-actions{flex-wrap:wrap;gap:12px}
+/* Approved flat roster: compact labels, full names, one editor per clicked day. */
+#workforceShiftsPanel .workforce-shift-toolbar{gap:16px;flex-wrap:wrap;padding:0 0 16px;border-bottom:1px solid var(--line);margin-bottom:16px}
+#workforceShiftsPanel .workforce-draft-note{background:none;border:0;padding:0;margin:0 0 16px;color:var(--muted);font-size:13px}
+#workforceShiftsPanel .workforce-shift-grid{border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+#workforceShiftsPanel .workforce-shift-grid-head,#workforceShiftsPanel .workforce-shift-grid-row{grid-template-columns:minmax(190px,1.5fr) repeat(7,minmax(104px,1fr));min-width:918px}
+#workforceShiftsPanel .workforce-shift-grid-head>span{padding:14px 10px;min-height:64px;font-size:13px;gap:6px;border-color:var(--line);background:var(--surface-soft)}
+#workforceShiftsPanel .workforce-shift-grid-head small{font-size:11px}
+#workforceShiftsPanel .workforce-shift-person{display:grid;align-content:center;gap:6px;padding:16px;background:var(--surface);box-shadow:1px 0 0 var(--line)}
+#workforceShiftsPanel .workforce-shift-person b{font:inherit;font-weight:700;white-space:normal;text-overflow:clip;overflow:visible;overflow-wrap:anywhere}
+#workforceShiftsPanel .workforce-shift-person small{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+#workforceShiftsPanel .workforce-shift-cell{appearance:none;display:grid;align-content:center;justify-items:stretch;gap:8px;min-height:88px;padding:12px 10px;margin:0;width:100%;border:0;border-left:1px solid var(--line);border-radius:0;box-shadow:none;background:var(--surface);font:inherit;color:var(--ink);text-align:center;cursor:pointer}
+#workforceShiftsPanel .workforce-shift-cell small{font-size:12px;color:var(--muted);white-space:nowrap}
+#workforceShiftsPanel .workforce-shift-label{display:block;padding:7px 6px;border-radius:7px;font-size:12px;font-weight:700;line-height:1.25;background:var(--surface-soft)}
+#workforceShiftsPanel .workforce-shift-cell.is-morning .workforce-shift-label{background:color-mix(in srgb,#65bc81 22%,var(--surface));color:var(--ink)}
+#workforceShiftsPanel .workforce-shift-cell.is-evening .workforce-shift-label{background:color-mix(in srgb,#609ee8 22%,var(--surface));color:var(--ink)}
+#workforceShiftsPanel .workforce-shift-cell.is-custom .workforce-shift-label{background:color-mix(in srgb,#a088e1 22%,var(--surface));color:var(--ink)}
+#workforceShiftsPanel .workforce-shift-cell.is-leave .workforce-shift-label{background:color-mix(in srgb,#ef8892 22%,var(--surface));color:var(--ink)}
+#workforceShiftsPanel .workforce-shift-grid .is-today{background:color-mix(in srgb,#e9c977 14%,var(--surface))}
+#workforceShiftsPanel .workforce-shift-cell:hover{background:var(--surface-soft)}
+#workforceShiftsPanel .workforce-shift-cell:focus-visible{outline:2px solid var(--ink);outline-offset:-3px}
+#workforceShiftsPanel .workforce-shift-legend{display:flex;gap:20px;flex-wrap:wrap;padding:18px 2px;color:var(--muted);font-size:12px}
+.workforce-shift-legend>span{display:flex;align-items:center;gap:8px}.workforce-shift-legend i{width:12px;height:12px;border-radius:50%;background:#9b9b9b}
+.workforce-shift-legend .is-morning i{background:#65bc81}.workforce-shift-legend .is-evening i{background:#609ee8}.workforce-shift-legend .is-custom i{background:#a088e1}.workforce-shift-legend .is-leave i{background:#ef8892}
+#workforceShiftsPanel dialog.workforce-shift-editor{padding:0;width:min(520px,calc(100% - 48px));max-width:none;max-height:calc(100dvh - 48px);border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--ink);box-shadow:0 24px 70px rgba(0,0,0,.2);overflow:auto}
+#workforceShiftsPanel dialog.workforce-shift-editor::backdrop{background:rgba(0,0,0,.35);backdrop-filter:blur(5px)}
+.workforce-shift-editor>header{align-items:flex-start}.workforce-shift-editor header p{margin:8px 0 0;color:var(--muted);font-size:13px}
+.workforce-shift-editor label{display:grid;gap:8px;font-size:13px;font-weight:700}
+.workforce-shift-editor input,.workforce-shift-editor select{min-width:0;min-height:48px;width:100%;box-sizing:border-box;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit}
+.workforce-shift-editor-hours{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}.workforce-shift-editor-hours[hidden]{display:none!important}
+#workforceShiftEditorError{color:#bb293b;font-size:13px;margin:14px 0 0}#workforceShiftEditorError:empty{display:none}
+@media(max-width:540px){#workforceShiftsPanel dialog.workforce-shift-editor{width:calc(100% - 24px);max-height:calc(100dvh - 24px)}#workforceShiftsPanel .workforce-shift-actions{width:100%}#workforceShiftsPanel .workforce-shift-actions>button{flex:1}#workforceShiftsPanel .workforce-week-picker{width:100%}.workforce-shift-editor-hours{gap:12px}}
+@media(max-width:900px){#workforceTasksPanel .workforce-task-layout{grid-template-columns:1fr}#workforceTasksPanel .workforce-task-builder{border-right:0;padding:0 0 20px}#workforceTasksPanel .workforce-active-tasks{padding:0}.staff-user-list{overflow-x:auto}.staff-personnel-table{min-width:630px}.workforce-task-ledger{overflow-x:auto}.workforce-task-ledger-row,.workforce-task-ledger-head{min-width:510px}}
+@media(max-width:540px){.staff-personnel-modal{padding:12px}.staff-personnel-dialog{max-height:calc(100dvh - 24px)}.staff-personnel-body,.staff-personnel-dialog>header,.staff-personnel-dialog>footer{padding:18px}.staff-personnel-body .form-grid.two{grid-template-columns:1fr}}
+#workforceTasksPanel .workforce-task-layout{display:block}
+#workforceTasksPanel .workforce-active-tasks{padding:0}
+#workforceTasksPanel .workforce-task-builder{padding:0;border:0;display:flex;flex-direction:column;min-height:0}
+.workforce-task-footer,.workforce-composer-recipients{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.workforce-task-footer{border-top:1px solid var(--line);padding:20px 8px;margin-top:16px}
+.workforce-task-footer>span,.workforce-composer-recipients>span{color:var(--muted);font-size:13px}
+.workforce-composer-recipients{margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+#workforceTasksPanel dialog.workforce-modal{padding:0;width:min(720px,calc(100% - 48px));max-width:none;max-height:calc(100dvh - 48px);border:1px solid var(--line);border-radius:20px;background:var(--surface);color:var(--ink);box-shadow:0 24px 70px rgba(0,0,0,.2);overflow:hidden}
+#workforceTasksPanel dialog.workforce-modal[open]{display:flex;flex-direction:column}
+#workforceTasksPanel dialog.workforce-modal::backdrop{background:rgba(0,0,0,.35);backdrop-filter:blur(5px)}
+.workforce-modal>header,.workforce-modal>footer,.workforce-modal form>footer{padding:20px 24px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-shrink:0}
+.workforce-modal>header{border-bottom:1px solid var(--line)}
+.workforce-modal>header h3{margin:0;font-size:24px}
+.workforce-modal>footer,.workforce-modal form>footer{border-top:1px solid var(--line)}
+.workforce-modal form>footer{justify-content:flex-end}
+.workforce-modal footer>div{display:flex;gap:12px}
+.workforce-modal-body{padding:24px;overflow:auto;min-height:0}
+#workforceComposerDialog .workforce-modal-body{display:grid;gap:16px}
+#workforceTasksPanel .workforce-select-all{display:flex;align-items:center;gap:14px;padding:0 0 20px;border-bottom:1px solid var(--line);font-weight:700}
+#workforceTasksPanel .workforce-person-options{display:block;padding:0;border:0;background:none;border-radius:0;box-shadow:none}
+#workforceTasksPanel .workforce-person-options .workforce-person-row{display:grid;grid-template-columns:18px minmax(0,1fr) minmax(0,1fr);gap:14px;padding:18px 0;border:0!important;border-bottom:1px solid var(--line)!important;border-radius:0!important;background:none!important;box-shadow:none!important;cursor:pointer}
+.workforce-person-row>strong,.workforce-person-row>span{overflow-wrap:anywhere;min-width:0}
+.workforce-person-row>span{color:var(--muted)}
+#workforceTasksPanel .workforce-modal input[type=checkbox]{appearance:auto!important;position:static!important;opacity:1!important;width:18px;height:18px;min-width:18px;min-height:18px;margin:0;padding:0;accent-color:var(--ink)}
+#workforcePickerCount{color:var(--muted);font-size:13px}
+@media(max-width:540px){
+ #workforceTasksPanel dialog.workforce-modal{width:calc(100% - 24px);max-height:calc(100dvh - 24px)}
+ .workforce-modal-body,.workforce-modal>header,.workforce-modal>footer,.workforce-modal form>footer{padding:18px}
+ .workforce-modal>footer{flex-wrap:wrap}.workforce-modal footer>div{margin-left:auto}
+ #workforceTargetPicker{margin:0}
+ .workforce-composer-recipients,.workforce-task-footer{gap:12px}
+ .workforce-modal .workforce-form-row{grid-template-columns:1fr}
+}
+
+/* Approved reference frames: one accordion surface, flat tables inside. */
+#staffAccessCard>.staff-layout{gap:18px}
+#staffAccessCard>.staff-layout>.staff-accordion{min-width:0;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:none;overflow:visible}
+#staffAccessCard>.staff-layout>.staff-accordion>.staff-accordion-head{display:grid;grid-template-columns:minmax(0,1fr) 20px;gap:16px;min-height:72px;padding:20px 24px;border:0;border-radius:14px;background:transparent;box-sizing:border-box}
+#staffAccessCard>.staff-layout>.staff-accordion[open]>.staff-accordion-head{border-bottom:1px solid var(--line);border-radius:14px 14px 0 0}
+#staffAccessCard>.staff-layout>.staff-accordion>.staff-accordion-head h4{margin:0;font-family:var(--panel-font-display);font-size:22px;font-weight:600;line-height:1.3}
+#staffAccessCard>.staff-layout>.staff-accordion>.staff-accordion-head>div{grid-column:1;grid-row:1;min-width:0}
+#staffAccessCard>.staff-layout>.staff-accordion>.staff-accordion-head .staff-accordion-chevron{grid-column:2;grid-row:1;justify-self:center;border-color:var(--ink)}
+#staffAccessCard>.staff-layout>.staff-accordion>.staff-accordion-body{padding:24px;gap:0;background:transparent;min-width:0}
+#staffPersonnelAccordion .staff-personnel-toolbar{margin:0 0 18px}
+#staffPersonnelAccordion .staff-personnel-head{background:color-mix(in srgb,var(--surface-soft) 55%,var(--surface));border-radius:10px 10px 0 0;color:var(--muted);font-size:13px}
+#staffPersonnelAccordion .staff-personnel-row:not(.staff-personnel-head){min-height:76px}
+#workforceTasksPanel .workforce-task-layout,#workforceTasksPanel .workforce-active-tasks{min-width:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+#workforceTasksPanel .workforce-list-heading{margin:0 0 16px}
+#workforceTasksPanel .workforce-list-heading h3{margin:0;font-family:var(--panel-font-display);font-size:22px;font-weight:600}
+#workforceTasksPanel .workforce-task-view-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
+#workforceTasksPanel .workforce-task-view-tabs button{padding:10px 16px;min-height:42px;white-space:nowrap}
+#workforceTasksPanel .workforce-task-ledger-head{background:color-mix(in srgb,var(--surface-soft) 55%,var(--surface));border-radius:10px 10px 0 0;padding:16px;font-size:13px}
+#workforceTasksPanel .workforce-task-ledger-row.workforce-task-card{padding:20px 16px;min-height:72px}
+#workforceTasksPanel .workforce-task-ledger-row em{justify-self:start;font-style:normal}
+#workforceTasksPanel .workforce-empty{border:0;border-radius:0;background:none;min-height:100px;padding:32px 16px;margin:0;box-sizing:border-box}
+#workforceTasksPanel .workforce-task-footer{padding:20px 0 0;margin-top:20px}
+#workforceShiftsPanel .workforce-shift-templates{padding:0;border:0;border-radius:0;background:none;box-shadow:none}
+#workforceShiftsPanel .workforce-shift-templates>summary{padding:18px 0 0}
+#workforceShiftsPanel .workforce-shift-legend{padding:20px 0;margin:0}
+@media(max-width:540px){
+ #staffAccessCard>.staff-layout{gap:12px}
+ #staffAccessCard>.staff-layout>.staff-accordion>.staff-accordion-head{padding:18px;min-height:64px}
+ #staffAccessCard>.staff-layout>.staff-accordion>.staff-accordion-head h4{font-size:19px}
+ #staffAccessCard>.staff-layout>.staff-accordion>.staff-accordion-body{padding:18px}
+ #workforceTasksPanel .workforce-task-view-tabs button{padding:8px 12px;min-height:40px}
+ #workforceTasksPanel .workforce-task-footer{flex-wrap:wrap;justify-content:flex-end}
+ #workforceTasksPanel .workforce-task-footer>span{margin-right:auto}
+}

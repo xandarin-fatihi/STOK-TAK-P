@@ -1,0 +1,32 @@
+{
+  "name": "stok-takip-sistemi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PAKET 3 arayuz temelli bagimsiz stok takip sistemi",
+  "main": "API/src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node API/src/server.js",
+    "check": "node STOCK-CHECK.js",
+    "white-label": "node WHITE-LABEL-CHECK.js",
+    "test": "node --test API/tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=20.9"
+  },
+  "dependencies": {
+    "@zxing/browser": "^0.2.1",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "nodemailer": "^9.0.5",
+    "sharp": "^0.34.3",
+    "web-push": "^3.6.7"
+  }
+}

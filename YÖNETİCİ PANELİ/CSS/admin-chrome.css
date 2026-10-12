@@ -1,0 +1,38 @@
+/* Yönetici kabuğu: tema tokenları ve mevcut aç/kapa davranışı korunur. */
+.admin-shell { --sidebar-width: 248px; }
+.admin-shell .sidebar { grid-template-rows: auto minmax(0, 1fr); }
+.admin-shell .brand-block { padding-bottom: 18px; border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
+.admin-shell .sidebar .brand-title { font-size: 15px; line-height: 1.4; }
+.admin-shell .panel-nav a { min-height: 46px; gap: 12px; font-size: 13px; font-weight: 600; }
+.admin-shell .panel-nav a svg { width: 20px; height: 20px; fill: none; stroke: currentColor; }
+.admin-shell .panel-nav-group { margin-top: 12px; padding: 8px 0 0; border: 0; border-top: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 0; background: transparent; }
+.admin-shell .panel-nav-group > summary { min-height: 44px; text-transform: none; font-size: 12px; letter-spacing: 0; }
+.admin-shell .panel-nav-group > summary svg { fill: none; stroke: currentColor; stroke-width: 1.7; }
+.admin-shell .admin-topbar-profile-wrap { position: relative; display: block; width: auto; flex: 0 0 auto; order: 10; margin: 0; padding: 0 0 0 12px; border: 0; border-left: 1px solid var(--panel-line); }
+.admin-shell .admin-topbar-profile { display: flex; align-items: center; gap: 10px; width: auto; min-height: 44px; padding: 4px 6px; border: 0; border-radius: 10px; color: var(--panel-ink); background: transparent; cursor: pointer; }
+.admin-shell .admin-topbar-profile:hover { background: var(--panel-surface-soft); }
+.admin-shell .admin-topbar-profile .profile-avatar { flex: 0 0 36px; width: 36px; height: 36px; }
+.admin-shell .admin-topbar-profile-copy { display: grid; gap: 2px; min-width: 0; text-align: left; }
+.admin-shell .admin-topbar-profile-copy strong { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.admin-shell .admin-topbar-profile-copy small { font-size: 11px; color: var(--panel-muted); }
+.admin-shell .admin-topbar-profile > svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.admin-shell .admin-topbar-profile-wrap .admin-profile-menu,
+.admin-shell.is-sidebar-collapsed .admin-topbar-profile-wrap .admin-profile-menu { inset: calc(100% + 8px) 0 auto auto; width: min(260px, calc(100vw - 24px)); z-index: 1200; }
+.admin-shell .admin-topbar-profile:focus-visible { outline: 3px solid var(--panel-accent); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .admin-shell .admin-topbar-profile-wrap { padding-left: 6px; }
+  .admin-shell .admin-topbar-profile-copy { display: none; }
+  .admin-shell .admin-topbar-profile { gap: 4px; }
+}
+@media (max-width: 760px) {
+  .admin-shell .topbar .topbar-actions { display: flex !important; flex-wrap: wrap; justify-content: flex-end; width: 100%; }
+}
+
+/* Aynı kayıt akışı Ayarlar'da; üst çubuk yalnız profil ve bildirimleri taşır. */
+.admin-shell .settings-preferences-card > .card-head { flex-wrap: wrap; }
+.admin-shell .settings-save-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; margin-left: auto; }
+.admin-shell .settings-save-actions .save-state { min-width: 0; max-width: 100%; height: auto; overflow-wrap: anywhere; }
+.admin-shell .settings-save-button { flex: 0 0 auto; min-height: 44px; }
+@media (max-width: 600px) {
+  .admin-shell .settings-save-actions { width: 100%; }
+}

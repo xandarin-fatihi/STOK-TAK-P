@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Preserve vendored license/content formatting; do not enforce our whitespace rules.
+**/vendor/** -whitespace

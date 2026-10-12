@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="tr" data-pwa-app="personel" data-pwa-worker="/personel/sw.js" data-pwa-scope="/personel/">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="">
+  <title>Personel</title>
+  <link rel="manifest" href="/personel/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/app-icons/personel/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="/assets/app-icons/personel/favicon-48.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/app-icons/personel/apple-touch-icon-180.png">
+  <link rel="stylesheet" href="/personel/personel-stock-shipment.css?v=20261001-product-detail-v1">
+  <link rel="stylesheet" href="/personel/personel.css?v=20260927-shipment-layout-v5">
+  <link rel="stylesheet" href="/shared/styles/panel-foundation.css?v=20260919-neutral-brand">
+  <link rel="stylesheet" href="/shared/styles/brand-identity.css?v=20260919-neutral-brand">
+  <link rel="stylesheet" href="/personel/personel-compact.css?v=20261004-shipment-receipt-v3&approved=20261008-v1">
+  <link rel="stylesheet" data-personel-lazy-style="notifications" href="/personel/notifications.css?v=20261004-simple-modal-v3">
+  <link rel="stylesheet" href="/personel/personel-profile.css?v=20260927-profile-layout-v1">
+  <link rel="stylesheet" href="/personel/stock-tabs.css?v=20260930-stock-tabs-v1">
+  <link rel="stylesheet" href="/personel/personel-overview.css?v=20261004-overview-dialog-v1&approved=20261008-v1&critical=20261008-v1">
+  <link rel="stylesheet" href="/personel/personel-stock-revision.css?v=20261004-stock-detail-v4&fixes=20261011-v2">
+  <link rel="stylesheet" href="/personel/personel-locator.css?v=20261004-locator-v2&approved=20261008-v1">
+  <link rel="stylesheet" href="/personel/material-requests.css?v=20261004-material-request-card-v4">
+  <link rel="stylesheet" href="/personel/tasks-revision.css?v=20261008-v2">
+  <link rel="stylesheet" href="/shared/styles/pwa-ui.css?v=20260919-neutral-brand">
+  <meta name="menu-suite-lazy-style" content="/shared/styles/account-security.css">
+  <meta name="menu-suite-lazy-script" content="/shared/scripts/account-security.js">
+  <script src="/shared/scripts/save-coordinator.js?v=20260919-neutral-brand"></script>
+  <script src="/shared/scripts/panel-theme.js?v=20260919-neutral-brand"></script>
+  <script src="/shared/scripts/zxing-browser.min.js?v=0.2.1" defer></script>
+  <script src="/shared/scripts/stock-lookup.js?v=20261004-locator-v2&approved=20261008-v1" defer></script>
+  <script src="/shared/scripts/task-state.js?v=20261008-v1"></script>
+  <script src="/shared/scripts/leave-period.js?v=20261008-approved-ui-v1" defer></script>
+  <script src="/personel/personel.js?v=20261005-storage-placement-v1&batch=20261008-v1&approved=20261008-v2&critical=20261008-v1&tasks=20261008-v2&fixes=20261011-v2" defer></script>
+  <script src="/shared/scripts/live-preview-receiver.js?v=20260919-neutral-brand" defer></script>
+  <script src="/shared/scripts/pwa-client.js?v=20260919-neutral-brand" defer></script>
+<script src="/shared/scripts/brand-identity.js?v=20260929-role-brand-v1" defer></script>
+</head>
+<body>
+  <main class="personel-app" id="personelApp" data-view="booting">
+    <section class="personel-login" id="personelLogin" hidden>
+      <form class="login-card" id="personelLoginForm">
+        <img src="/assets/app-icons/personel/master.svg" alt="Personel uygulama simgesi" class="login-logo" data-brand-logo data-brand-logo-kind="personel">
+        <h1>Personel Girişi</h1>
+        <p>Stok, barkod, talepler, sevkiyat, sayım ve profil alanlarına erişmek için personel bilgilerinizle giriş yapın.</p>
+        <label>
+          <input id="personelUsername" type="text" autocomplete="username" placeholder="Kullanıcı adı">
+        </label>
+        <label>
+          <input id="personelPassword" type="password" autocomplete="current-password" placeholder="Şifre">
+        </label>
+        <button class="primary ui-button ui-button--primary ui-button--block" type="submit">Giriş Yap</button>
+        <a class="personel-login-help" href="/password-reset/?scope=personel&amp;returnTo=%2Fpersonel%2F">Şifremi unuttum</a>
+        <p class="form-message" id="loginMessage"></p>
+      </form>
+    </section>
+
+    <section class="personel-dashboard" id="personelDashboard" hidden>
+      <aside class="personel-sidebar" id="personelSidebar">
+        <button class="brand-block sidebar-logo-toggle" id="personelSidebarToggle" type="button" aria-expanded="true" aria-controls="personelSidebar" aria-label="Kenar çubuğunu kapat" title="Kenar çubuğunu kapat">
+          <img src="/assets/app-icons/personel/master.svg" alt="Personel uygulama simgesi" data-brand-logo data-brand-logo-kind="personel">
+          <span class="brand-copy">
+            <small>MARKA</small>
+            <strong>Personel Paneli</strong>
+          </span>
+        </button>
+        <nav class="personel-nav" aria-label="Personel sekmeleri">
+          <button type="button" data-section="home" title="Genel Bakış" aria-label="Genel Bakış"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4zM14 20h6V11h-6zM4 20h6v-3H4zM14 7h6V4h-6z"/></svg></span><span class="nav-label">Genel Bakış</span></button>
+          <button type="button" data-section="stock" title="Stok" aria-label="Stok"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 7 8-4 8 4-8 4z"/><path d="m4 7 8 4 8-4v10l-8 4-8-4zM12 11v10"/></svg></span><span class="nav-label">Stok</span></button>
+          <button type="button" data-section="materialLocation" title="Malzeme Nerede?" aria-label="Malzeme Nerede?"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m14.5 14.5 5 5M10 7.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/></svg></span><span class="nav-label">Malzeme Nerede?</span></button>
+          <button type="button" data-section="materialRequest" title="Malzeme Talebi" aria-label="Malzeme Talebi"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 7 8-4 8 4-8 4z"/><path d="m4 7 8 4 8-4v10l-8 4-8-4zM12 11v10"/><path d="M18 14v6M15 17h6"/></svg></span><span class="nav-label">Malzeme Talebi</span></button>
+          <button type="button" data-section="shift" title="İzin Talebi" aria-label="İzin Talebi"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2.8h6V4M8 10h8M8 14h5M8 18h4"/></svg></span><span class="nav-label">İzin Talebi</span></button>
+          <button type="button" data-section="shipment" title="Sevkiyat" aria-label="Sevkiyat"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg></span><span class="nav-label">Sevkiyat</span></button>
+          <button type="button" data-section="tasks" title="Görevlerim" aria-label="Görevlerim"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2.8h6V4M8 11l2 2 5-5M8 17h8"/></svg></span><span class="nav-label">Görevlerim</span><span id="personelTaskBadge" class="personel-task-badge" hidden>0</span></button>
+        </nav>
+        <div class="personel-profile-wrap">
+          <button class="sidebar-user profile-menu-trigger" id="sidebarUser" type="button" aria-label="Personel profil menüsü" aria-haspopup="menu" aria-expanded="false"></button>
+          <div class="profile-popover profile-menu" id="profilePopover" role="menu" hidden>
+            <div class="profile-popover-head">
+              <span class="sidebar-user-avatar" id="profileMenuAvatar">P</span>
+              <div><strong id="profileMenuName">Personel</strong><small id="profileMenuRole">Personel</small></div>
+            </div>
+            <button type="button" role="menuitem" data-profile-action="edit">Profil bilgilerini düzenle</button>
+            <button type="button" role="menuitem" data-profile-action="notifications">Bildirim ayarları</button>
+            <button type="button" role="menuitem" data-profile-action="logout">Çıkış yap</button>
+            <p class="profile-menu-message" id="profileMenuMessage" role="alert" hidden></p>
+          </div>
+        </div>
+      </aside>
+      <button class="personel-sidebar-overlay" id="personelSidebarOverlay" type="button" aria-label="Kenar çubuğunu kapat" tabindex="-1"></button>
+
+      <section class="personel-workspace">
+        <header class="workspace-head">
+          <div class="workspace-title">
+            <p class="eyebrow" id="sectionKicker">Personel</p>
+            <h2 id="sectionTitle">Genel Bakış</h2>
+            <p id="sectionDescription">Günlük stok işlemlerinize hızlıca ulaşın.</p>
+          </div>
+          <div class="personel-head-actions">
+            <button class="personel-notification-trigger" id="personelNotificationTrigger" type="button" aria-label="Bildirimleri aç" aria-haspopup="dialog" aria-expanded="false" aria-controls="personelNotificationDrawer">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/></svg>
+              <span class="personel-notification-badge" id="personelNotificationBadge" hidden>0</span>
+            </button>
+          </div>
+        </header>
+
+        <section class="personel-section personel-overview" id="sectionHome" data-section-panel="home" aria-labelledby="sectionTitle">
+          <div class="personel-overview-state" id="personelOverviewState" role="status" aria-live="polite">
+            <span class="personel-overview-spinner" aria-hidden="true"></span>
+            <strong id="personelOverviewStateTitle">Genel bakış yükleniyor</strong>
+            <p id="personelOverviewStateText">Güncel stok ve işlem kayıtları hazırlanıyor.</p>
+            <button class="ui-button ui-button--secondary" id="personelOverviewRetry" type="button" hidden>Yeniden Dene</button>
+          </div>
+          <div class="personel-overview-content" id="personelOverviewContent" hidden>
+            <div class="personel-overview-summary" aria-label="Genel bakış özetleri">
+              <button class="personel-summary-card is-critical" type="button" data-overview-action="critical">
+                <span class="personel-summary-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4z"/><path d="M12 9v5M12 17.5h.01"/></svg></span>
+                <span><small>Kritik Stoklar</small><strong id="overviewCriticalCount">—</strong><em>Minimum seviyenin altında</em></span>
+                <b aria-hidden="true">›</b>
+              </button>
+              <button class="personel-summary-card is-shipment" type="button" data-overview-action="shipments">
+                <span class="personel-summary-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg></span>
+                <span><small>Bekleyen Sevkiyatlar</small><strong id="overviewShipmentCount">—</strong><em>İşlem bekleyen kayıt</em></span>
+                <b aria-hidden="true">›</b>
+              </button>
+              <button class="personel-summary-card is-request" type="button" data-overview-action="requests">
+                <span class="personel-summary-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2.8h6V4M8 10h8M8 14h5M8 18h4"/></svg></span>
+                <span><small>Açık Malzeme Talepleri</small><strong id="overviewRequestCount">—</strong><em>Yönetici kararı bekleyen talep</em></span>
+                <b aria-hidden="true">›</b>
+              </button>
+              <button class="personel-summary-card is-products" type="button" data-overview-action="products">
+                <span class="personel-summary-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 7 8-4 8 4-8 4z"/><path d="m4 7 8 4 8-4v10l-8 4-8-4zM12 11v10"/></svg></span>
+                <span><small>Toplam Ürün</small><strong id="overviewProductCount">—</strong><em>Erişilebilir ürün kaydı</em></span>
+                <b aria-hidden="true">›</b>
+              </button>
+            </div>
+            <div class="personel-overview-columns">
+              <section class="personel-overview-panel" aria-labelledby="overviewCriticalTitle">
+                <header><div><small>STOK TAKİBİ</small><h3 id="overviewCriticalTitle">Kritik Stoklar</h3></div><button type="button" data-overview-action="critical">Tümünü Gör</button></header>
+                <div class="personel-overview-list" id="overviewCriticalList"></div>
+              </section>
+              <section class="personel-overview-panel" aria-labelledby="overviewMovementsTitle">
+                <header><div><small>HAREKETLER</small><h3 id="overviewMovementsTitle">Son İşlemlerim</h3></div><button type="button" data-overview-action="movements">Tümünü Gör</button></header>
+                <div class="personel-overview-list" id="overviewMovementList"></div>
+              </section>
+            </div>
+          </div>
+
+          <div class="personel-overview-dialog-shell" id="personelOverviewDialogShell" hidden>
+            <button class="personel-overview-dialog-backdrop" id="personelOverviewBackdrop" type="button" tabindex="-1" aria-label="Genel bakış ayrıntılarını kapat"></button>
+            <section class="personel-overview-dialog" id="personelOverviewDialog" role="dialog" aria-modal="true" aria-labelledby="personelOverviewDialogTitle" tabindex="-1">
+              <header class="personel-overview-dialog__head">
+                <div>
+                  <small>GENEL BAKIŞ</small>
+                  <h2 id="personelOverviewDialogTitle">Ayrıntılar</h2>
+                  <p id="personelOverviewDialogMeta"></p>
+                </div>
+                <button class="personel-overview-dialog__close" id="personelOverviewDialogClose" type="button" aria-label="Genel bakış ayrıntılarını kapat" title="Kapat">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+                </button>
+              </header>
+              <div class="personel-overview-dialog__search" id="personelOverviewSearch" hidden>
+                <label for="personelOverviewSearchInput">Malzeme ara</label>
+                <span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>
+                  <input id="personelOverviewSearchInput" type="search" autocomplete="off" placeholder="Malzeme adı veya kodu">
+                </span>
+              </div>
+              <div class="personel-overview-dialog__body" id="personelOverviewDialogBody" aria-live="polite"></div>
+              <nav class="personel-overview-dialog__pagination" id="personelOverviewPagination" aria-label="Genel bakış sayfaları" hidden></nav>
+              <footer class="personel-overview-dialog__footer" id="overviewCriticalActions" hidden>
+                <p class="lookup-message" id="overviewCriticalMessage" role="status" hidden></p>
+                <div class="overview-critical-actions">
+                  <span id="overviewCriticalSelection" aria-live="polite"></span>
+                  <button class="ui-button ui-button--secondary" id="overviewCriticalCancel" type="button" hidden>Vazgeç</button>
+                  <button class="ui-button ui-button--primary" id="overviewCriticalRequest" type="button">Talep Aç</button>
+                </div>
+              </footer>
+            </section>
+          </div>
+        </section>
+
+        <section class="personel-section personel-lookup-section" id="sectionMaterialLocation" data-section-panel="materialLocation" hidden>
+          <div class="material-finder">
+            <form class="material-finder-form" id="materialSearchForm" novalidate>
+              <label class="material-search-field" for="materialSearchInput">
+                <span>Malzeme adı, ürün kodu veya barkod</span>
+                <input id="materialSearchInput" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Malzeme adı, ürün kodu veya barkod">
+              </label>
+              <label class="material-category-field" for="materialCategoryFilter">
+                <span>Kategori</span>
+                <select id="materialCategoryFilter"><option value="all">Tüm kategoriler</option></select>
+              </label>
+              <label class="material-stock-filter">
+                <input id="materialInStockFilter" type="checkbox">
+                <span>Yalnız stokta olanlar</span>
+              </label>
+              <div class="material-search-actions">
+                <button class="ui-button ui-button--primary" id="materialSearchSubmit" type="submit">Ara</button>
+                <button class="ui-button ui-button--secondary" id="barcodeCameraOpen" type="button">Barkod Sorgula</button>
+              </div>
+            </form>
+            <p class="lookup-message" id="materialSearchMessage" role="status" aria-live="polite" hidden></p>
+            <div class="material-results" id="materialSearchResults" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <section class="personel-section" id="sectionTasks" data-section-panel="tasks" hidden></section>
+        <section class="personel-section stock-section" id="sectionStock" data-section-panel="stock" hidden>
+          <div class="stock-catalog-shell">
+            <header class="stock-catalog-toolbar">
+              <div class="stock-message" id="stockMessage" hidden></div>
+              <label class="stock-catalog-search">
+                <span aria-hidden="true">⌕</span>
+                <input id="stockSearchInput" type="search" placeholder="Ürün, kategori veya kod ara…" autocomplete="off" spellcheck="false">
+              </label>
+              <div class="stock-categories" id="stockCategoryPills" aria-label="Stok kategorileri"></div>
+            </header>
+            <div class="stock-catalog-content"><div class="stock-grid" id="stockGrid"></div></div>
+          </div>
+        </section>
+
+        <section class="personel-section profile-section" id="sectionProfile" data-section-panel="profile" hidden>
+          <form class="profile-card" id="profileForm" data-profile-workspace="profile">
+            <div class="profile-details-column">
+              <div class="profile-hero">
+                <div class="profile-avatar" id="profileAvatar">P</div>
+                <div>
+                  <p class="eyebrow">Profil</p>
+                  <h3>Kendi profilini düzenle</h3>
+                  <p>Ad, e-posta ve hesap güvenliği bilgilerini buradan güncelle.</p>
+                </div>
+              </div>
+              <div class="form-grid two">
+                <label><span>Ad soyad</span><input id="profileName" type="text" maxlength="80"></label>
+                <label><span>Avatar URL</span><input id="profileAvatarUrl" type="url" maxlength="500" placeholder="https://..."></label>
+                <label class="wide"><span>Profil fotoğrafı</span><input id="profilePhotoInput" type="file" accept="image/jpeg,image/png,image/webp"></label>
+                <label class="wide"><span>Kısa not</span><textarea id="profileBio" rows="4" maxlength="240"></textarea></label>
+              </div>
+            </div>
+            <section class="profile-appearance-section"><h3>Görünüm ve Tema</h3><p>Renk temasını ve görünüm modunu bağımsız seç. Kalıcı kayıt için Profili Kaydet düğmesini kullan.</p><div id="profileAppearance"></div></section>
+            <div class="profile-actions">
+              <button class="ui-button ui-button--secondary" id="profileAppearanceCancel" type="button">İptal</button>
+              <button class="primary ui-button ui-button--primary" type="submit">Profili Kaydet</button>
+              <span id="profileMessage"></span>
+            </div>
+          </form>
+          <section class="account-security-card" data-profile-workspace="profile" data-account-security data-account-scope="personel" data-account-email-explicit-target="true" data-module-ready="false" aria-labelledby="personelAccountSecurityTitle">
+            <header class="account-security-head">
+              <div>
+                <p class="eyebrow">Hesap güvenliği</p>
+                <h3 id="personelAccountSecurityTitle">Kişisel e-posta</h3>
+                <p>Doğrulama ve hesap kurtarma kodları yalnız girdiğiniz kişisel adrese gönderilir.</p>
+              </div>
+              <span class="account-security-state" id="personelAccountEmailState" data-account-email-state>Denetlenmedi</span>
+            </header>
+            <form class="account-security-email-form" id="personelAccountEmailForm" data-account-email-form novalidate>
+              <label><span>Kişisel e-posta</span><input id="personelAccountEmail" data-account-email type="email" name="email" maxlength="254" autocomplete="email" required placeholder="ornek@gmail.com"></label>
+              <button class="ui-button ui-button--primary" id="personelAccountEmailVerificationRequest" data-account-email-send type="submit">Kodu Gönder</button>
+            </form>
+            <div class="account-security-verification" data-account-verification hidden>
+              <div><strong data-account-verification-title>Doğrulama kodu gönderildi</strong><span data-account-verification-copy>Altı haneli kodu girin.</span></div>
+              <form class="account-security-code-form" id="personelAccountEmailVerificationForm" data-account-email-confirm-form hidden novalidate>
+                <label><span>Altı haneli kod</span><input id="personelAccountEmailCode" data-account-email-code type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label>
+                <button class="ui-button ui-button--primary" id="personelAccountEmailVerificationConfirm" type="submit">Doğrula</button>
+              </form>
+            </div>
+            <p class="account-security-meta-line">Son şifre yenileme: <strong data-account-password-reset>Bilgi yok</strong></p>
+            <div class="account-security-danger-row">
+              <span><strong>Tüm cihazlardaki oturumları kapat</strong><small>Diğer açık oturumları ve bildirim bağlantılarını sonlandırır.</small></span>
+              <button class="ui-button ui-button--danger ui-button--sm" type="button" data-account-logout-all>Oturumları kapat</button>
+            </div>
+            <p class="account-security-message" id="personelAccountSecurityMessage" data-account-security-message role="status" aria-live="polite"></p>
+          </section>
+          <form class="notification-preferences-card" id="personelNotificationPreferencesForm" data-profile-workspace="notifications" data-module-ready="false" hidden>
+            <button class="workspace-back-button" type="button" data-profile-workspace-back aria-label="Profil düzenlemeye dön">← Profil düzenlemeye dön</button>
+            <header>
+              <div>
+                <p class="eyebrow">Bildirim tercihleri</p>
+                <h3>Bildirim tercihleri</h3>
+                <p>Uygulama ve e-posta bildirimlerini buradan yönet.</p>
+              </div>
+              <span class="notification-preferences-state" id="personelNotificationPreferencesState" role="status"></span>
+            </header>
+            <div class="notification-preferences-grid">
+              <div class="notification-email-summary notification-field--wide" id="personelNotificationEmailHelp">
+                <span><small>E-posta</small><strong id="personelNotificationEmailSummary">Henüz doğrulanmadı</strong></span>
+                <input id="personelNotificationEmail" name="emailAddress" type="hidden">
+                <button class="ui-button ui-button--ghost ui-button--sm" id="personelNotificationManageEmail" type="button">Değiştir</button>
+              </div>
+              <section class="notification-preference-group notification-field--wide" aria-labelledby="personelDeliveryChannelsTitle">
+                <h4 id="personelDeliveryChannelsTitle">Teslim kanalları</h4>
+                <div class="notification-toggle-grid">
+                  <label class="notification-toggle-row"><span>Uygulama içi bildirimler</span><input name="inAppEnabled" type="checkbox" role="switch"></label>
+                  <label class="notification-toggle-row"><span>E-posta bildirimleri</span><input name="emailEnabled" type="checkbox" role="switch"></label>
+                </div>
+              </section>
+              <section class="notification-preference-group notification-field--wide" aria-labelledby="personelCategoriesTitle">
+                <h4 id="personelCategoriesTitle">Kategoriler</h4>
+                <div class="notification-toggle-grid notification-toggle-grid--three">
+                  <label class="notification-toggle-row"><span>Görevler</span><input name="taskNotifications" type="checkbox" role="switch"></label>
+                  <label class="notification-toggle-row"><span>Sevkiyat</span><input name="shipmentNotifications" type="checkbox" role="switch"></label>
+                  <label class="notification-toggle-row"><span>Stok</span><input name="stockNotifications" type="checkbox" role="switch"></label>
+                  <label class="notification-toggle-row"><span>Vardiya ve talepler</span><input name="shiftNotifications" type="checkbox" role="switch"></label>
+                  <label class="notification-toggle-row"><span>Sistem</span><input name="systemNotifications" type="checkbox" role="switch"></label>
+                </div>
+              </section>
+              <section class="notification-preference-group notification-field--wide" aria-labelledby="personelRemindersTitle">
+                <h4 id="personelRemindersTitle">Hatırlatmalar</h4>
+                <div class="notification-toggle-grid">
+                  <label class="notification-toggle-row"><span>Görevden 24 saat önce</span><input name="taskReminder24h" type="checkbox" role="switch"></label>
+                  <label class="notification-toggle-row"><span>Görevden 2 saat önce</span><input name="taskReminder2h" type="checkbox" role="switch"></label>
+                  <label class="notification-toggle-row"><span>Süresi geçen görevler</span><input name="overdueReminder" type="checkbox" role="switch"></label>
+                  <label class="notification-toggle-row"><span>Vardiyadan 12 saat önce</span><input name="shiftReminder12h" type="checkbox" role="switch"></label>
+                  <label class="notification-toggle-row"><span>Vardiyadan 2 saat önce</span><input name="shiftReminder2h" type="checkbox" role="switch"></label>
+                </div>
+              </section>
+              <section class="notification-preference-group notification-field--wide" aria-labelledby="personelQuietHoursTitle">
+                <h4 id="personelQuietHoursTitle">Sessiz saatler</h4>
+                <label class="notification-toggle-row notification-toggle-row--wide"><span>Sessiz saatleri kullan</span><input name="quietHoursEnabled" type="checkbox" role="switch"></label>
+                <div class="notification-quiet-times" id="personelNotificationQuietTimes" hidden>
+                  <label class="notification-time-field"><span>Başlangıç</span><input name="quietHoursStart" type="time"></label>
+                  <label class="notification-time-field"><span>Bitiş</span><input name="quietHoursEnd" type="time"></label>
+                </div>
+              </section>
+              <section class="notification-push-card notification-field--wide" aria-labelledby="personelPushTitle">
+                <span class="notification-push-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></span>
+                <div><strong id="personelPushTitle">Tarayıcı bildirimleri</strong><span id="personelPushStatus">Durum denetleniyor…</span></div>
+                <div class="notification-push-actions">
+                  <button class="ui-button ui-button--ghost" id="personelPushTest" type="button" hidden>Test bildirimi gönder</button>
+                  <button class="ui-button ui-button--secondary" id="personelPushToggle" type="button">Bildirimleri Aç</button>
+                </div>
+                <label class="notification-toggle-row notification-vibration-row">
+                  <span><strong>Bildirimlerde titreşim</strong><small>Desteklenen cihazlarda push bildirimi geldiğinde telefonu titreştir.</small></span>
+                  <input name="pushVibrationEnabled" type="checkbox" role="switch" checked>
+                </label>
+              </section>
+              <details class="notification-devices-card notification-field--wide" id="personelNotificationDevicesPanel">
+                <summary><span id="personelNotificationDevicesTitle">Bağlı cihazlar <b id="personelNotificationDevicesCount">(…)</b></span><span aria-hidden="true">›</span></summary>
+                <div class="notification-devices-content">
+                  <header><span>Hesabınıza bağlı bildirim tarayıcıları</span><button class="ui-button ui-button--ghost ui-button--sm" id="personelNotificationDevicesRefresh" type="button">Yenile</button></header>
+                  <div class="notification-device-list" id="personelNotificationDevices" aria-live="polite"></div>
+                </div>
+              </details>
+            </div>
+            <footer>
+              <button class="ui-button ui-button--primary" type="submit">Tercihleri Kaydet</button>
+            </footer>
+          </form>
+        </section>
+        <section class="personel-section workforce-section" id="sectionMaterialRequest" data-section-panel="materialRequest" hidden></section>
+        <section class="personel-section workforce-section" id="sectionShipment" data-section-panel="shipment" hidden></section>
+        <section class="personel-section workforce-section" id="sectionShift" data-section-panel="shift" hidden></section>
+      </section>
+    </section>
+  </main>
+
+  <button class="personel-notification-backdrop" id="personelNotificationBackdrop" type="button" aria-label="Bildirimleri kapat" hidden></button>
+  <aside class="personel-notification-modal" id="personelNotificationDrawer" role="dialog" aria-modal="true" aria-labelledby="personelNotificationTitle" tabindex="-1" hidden>
+    <header class="personel-notification-modal__head">
+      <h2 id="personelNotificationTitle">Bildirimler</h2>
+      <button class="personel-notification-close" id="personelNotificationClose" type="button" aria-label="Bildirimleri kapat">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <div class="personel-notification-message" id="personelNotificationMessage" role="status" aria-live="polite"></div>
+    <div class="personel-notification-list" id="personelNotificationList" aria-live="polite" aria-busy="false"></div>
+    <footer class="personel-notification-modal__footer">
+      <button class="ui-button ui-button--secondary ui-button--block" id="personelNotificationLoadMore" type="button" hidden>Daha fazla göster</button>
+    </footer>
+    <div class="personel-notification-undo-region" id="personelNotificationUndoRegion" aria-label="Silinen bildirimler" aria-live="polite" hidden></div>
+  </aside>
+
+  <div class="stock-modal stock-personel-modal" id="stockDetailModal" hidden>
+    <article class="stock-dialog stock-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="stockDetailTitle" tabindex="-1">
+      <header class="stock-detail-dialog__bar">
+        <span>Ürün detayı</span>
+        <button class="stock-close" id="stockDetailClose" type="button" aria-label="Ürün detayını kapat" title="Kapat">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <form class="stock-detail-form" id="stockActionForm" novalidate>
+        <div class="stock-detail-scroll">
+          <section class="stock-detail-hero">
+            <button class="stock-detail-media" id="stockDetailMedia" type="button" aria-label="Ürün görselini büyüt" title="Görseli büyüt">
+              <img id="stockDetailImage" src="/assets/images/neutral-placeholder.svg" alt="" loading="eager" decoding="async" draggable="false">
+              <span class="stock-detail-media__zoom" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5M10.5 7.5v6M7.5 10.5h6"/></svg>
+              </span>
+            </button>
+            <div class="stock-detail-summary">
+              <h2 id="stockDetailTitle">Ürün detayı</h2>
+              <p class="stock-detail-quantity"><span>Mevcut stok</span><strong id="stockDetailQuantity">—</strong></p>
+              <section class="stock-action-inline" id="stockActionPanel" aria-label="Stok eksiltme">
+                <label class="stock-action-quantity" for="stockActionQuantity">
+                  <span>Miktar (adet)</span>
+                  <input id="stockActionQuantity" type="number" min="1" step="1" inputmode="numeric" autocomplete="off" required>
+                </label>
+                <p class="stock-action-message" id="stockActionMessage" role="alert" aria-live="assertive" hidden></p>
+                <button class="ui-button ui-button--primary stock-action-submit" id="stockActionSubmit" type="submit">Eksilt</button>
+              </section>
+              <p class="stock-detail-message" id="stockDetailMessage" role="status" aria-live="polite" hidden></p>
+            </div>
+          </section>
+        </div>
+      </form>
+    </article>
+  </div>
+
+  <div class="stock-image-viewer" id="stockImageViewer" hidden>
+    <button class="stock-image-viewer__backdrop" id="stockImageViewerBackdrop" type="button" tabindex="-1" aria-label="Görsel incelemeyi kapat"></button>
+    <section class="stock-image-viewer__dialog" role="dialog" aria-modal="true" aria-labelledby="stockImageViewerTitle">
+      <header class="stock-image-viewer__bar">
+        <strong id="stockImageViewerTitle">Ürün görseli</strong>
+        <div class="stock-image-viewer__controls" aria-label="Görsel yakınlaştırma kontrolleri">
+          <button id="stockImageZoomOut" type="button" aria-label="Uzaklaştır" title="Uzaklaştır">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+          </button>
+          <button class="stock-image-viewer__level" id="stockImageZoomReset" type="button" aria-label="Yakınlaştırmayı sıfırla" title="Yakınlaştırmayı sıfırla">100%</button>
+          <button id="stockImageZoomIn" type="button" aria-label="Yakınlaştır" title="Yakınlaştır">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button id="stockImageViewerClose" type="button" aria-label="Görsel incelemeyi kapat" title="Kapat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+      </header>
+      <div class="stock-image-viewer__stage" id="stockImageViewerStage" tabindex="0" aria-label="Yakınlaştırılabilir ürün görseli">
+        <img id="stockImageViewerImage" src="/assets/images/neutral-placeholder.svg" alt="" draggable="false">
+      </div>
+      <p>Yakınlaştırdıktan sonra görseli sürükleyerek inceleyebilirsiniz.</p>
+    </section>
+  </div>
+
+  <div class="barcode-scanner-modal" id="barcodeScannerModal" hidden>
+    <button class="barcode-scanner-backdrop" id="barcodeScannerBackdrop" type="button" tabindex="-1" aria-label="Barkod okuyucuyu kapat"></button>
+    <section class="barcode-scanner-dialog" role="dialog" aria-modal="true" aria-labelledby="barcodeScannerTitle">
+      <header><h2 id="barcodeScannerTitle">Barkod Sorgula</h2><button class="ui-button ui-button--secondary" id="barcodeCameraClose" type="button" aria-label="Barkod okuyucuyu kapat">×</button></header>
+      <div class="barcode-camera" id="barcodeCameraPanel">
+        <video id="barcodeCameraVideo" playsinline muted aria-label="Barkod kamera görüntüsü"></video>
+        <span class="barcode-camera-guide" aria-hidden="true"></span>
+      </div>
+      <p class="lookup-message" id="barcodeReaderMessage" role="status" aria-live="polite" hidden></p>
+      <button class="ui-button ui-button--secondary" id="barcodePhotoOpen" type="button">Galeriden Ekle</button>
+      <input id="barcodePhotoInput" type="file" accept="image/*" hidden>
+    </section>
+  </div>
+  <div class="material-location-modal" id="materialLocationModal" hidden>
+    <button class="material-location-backdrop" id="materialLocationBackdrop" type="button" tabindex="-1" aria-label="Konum kartını kapat"></button>
+    <article class="material-location-dialog" role="dialog" aria-modal="true" aria-labelledby="materialLocationTitle" aria-describedby="materialLocationCode" tabindex="-1">
+      <header class="material-location-head">
+        <div>
+          <span>YERİNİ GÖSTER</span>
+          <h2 id="materialLocationTitle">Malzeme konumu</h2>
+          <p id="materialLocationCode"></p>
+        </div>
+        <button id="materialLocationClose" type="button" aria-label="Konum kartını kapat" title="Kapat">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="material-location-scroll" id="materialLocationContent"></div>
+    </article>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,983 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const http = require("node:http");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+const express = require("express");
+const { createProcurementDocumentService } = require("../src/procurement-documents");
+const { calculateLedgerSummary, createProcurementService, safeDocumentMetadata } = require("../src/procurement-service");
+const { registerProcurementRoutes } = require("../src/procurement-routes");
+const { createProcurementPaymentReminders } = require("../src/notification-scheduler");
+const notificationService = require("../src/notification-service");
+const { normalizeStore } = require("../src/store/file-store");
+const { migrateStore, STORE_SCHEMA_VERSION } = require("../src/store/migrations");
+
+const ADMIN = Object.freeze({
+  type: "admin",
+  id: "admin",
+  name: "Yönetici",
+  role: "yönetici",
+  branchId: "main",
+  capabilities: []
+});
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64"
+);
+
+test("finance regression: gross debt, payment, supplier/date scope and reversals", () => {
+  const debt = (id, supplierId, amountKurus, date = "2026-09-05") => ({ id, supplierId, type: "invoice", amountKurus: -amountKurus, transactionDate: date, createdAt: `${date}T09:00:00Z` });
+  const payment = (id, supplierId, amountKurus, date = "2026-09-05") => ({ id, supplierId, amountKurus, paymentDate: date, status: "recorded", ledgerEntryId: `ledger-${id}` });
+  const totals = (value) => [value.debtKurus, value.paymentKurus, value.remainingKurus];
+  const entries = [debt("a", "A", 50000), debt("b", "B", 30000)];
+  const payments = [payment("pa", "A", 40000), payment("pb", "B", 5000)];
+  assert.deepEqual(totals(calculateLedgerSummary([entries[0]], [])), [50000, 0, 50000]);
+  assert.deepEqual(totals(calculateLedgerSummary([entries[0]], [payments[0]])), [50000, 40000, 10000]);
+  assert.deepEqual(totals(calculateLedgerSummary(entries, payments)), [80000, 45000, 35000]);
+  assert.deepEqual(totals(calculateLedgerSummary(entries, payments, { supplierId: "A" })), [50000, 40000, 10000]);
+  const historical = [...entries, debt("old", "A", 12000, "2026-09-04")];
+  const datedPayments = [...payments, payment("old-payment", "A", 8000, "2026-09-04")];
+  assert.deepEqual(totals(calculateLedgerSummary(historical, datedPayments, { date: "2026-09-04" })), [12000, 8000, 4000]);
+  assert.deepEqual(totals(calculateLedgerSummary(historical, datedPayments, { supplierId: "A", date: "2026-09-05" })), [50000, 40000, 10000]);
+  assert.deepEqual(totals(calculateLedgerSummary(entries, [{ ...payments[0], status: "reversed" }, payments[1]])), [80000, 5000, 75000]);
+  const reversal = { id: "reverse-a", supplierId: "A", type: "reversal", reversalOf: "a", amountKurus: 50000, transactionDate: "2026-09-06" };
+  assert.deepEqual(totals(calculateLedgerSummary([...entries, reversal], payments, { date: "2026-09-05" })), [30000, 45000, 25000]);
+  const paymentReversal = { ...reversal, id: "reverse-pa", reversalOf: "ledger-pa", amountKurus: -40000 };
+  assert.deepEqual(totals(calculateLedgerSummary([...entries, paymentReversal], payments)), [80000, 5000, 75000]);
+});
+
+test("finance regression: FIFO deterministic allocation, credits and overpayment remain derived", () => {
+  const entries = [
+    { id: "debt-2", supplierId: "A", shipmentId: "shipment-2", type: "invoice", amountKurus: -30000, transactionDate: "2026-09-05", createdAt: "2026-09-05T09:00:00Z" },
+    { id: "debt-1", supplierId: "A", shipmentId: "shipment-1", type: "invoice", amountKurus: -50000, transactionDate: "2026-09-04", createdAt: "2026-09-04T09:00:00Z" }
+  ];
+  const payments = [{ id: "p", supplierId: "A", amountKurus: 60000, paymentDate: "2026-09-05" }];
+  const before = structuredClone({ entries, payments });
+  const summary = calculateLedgerSummary(entries, payments);
+  assert.deepEqual(summary.obligations.map((entry) => [entry.shipmentId, entry.allocatedPaymentKurus, entry.remainingKurus, entry.paymentStatus]), [
+    ["shipment-1", 50000, 0, "paid"], ["shipment-2", 10000, 20000, "partial"]
+  ]);
+  assert.equal(summary.openObligations.length, 1);
+  assert.deepEqual(calculateLedgerSummary([...entries].reverse(), payments), summary);
+  assert.deepEqual({ entries, payments }, before);
+  const tied = entries.map((entry) => ({ ...entry, transactionDate: "2026-09-05", createdAt: "2026-09-05T09:00:00Z" }));
+  assert.equal(calculateLedgerSummary(tied, payments).obligations[0].id, "debt-1");
+  tied[0].createdAt = "2026-09-05T08:00:00Z";
+  assert.equal(calculateLedgerSummary(tied, payments).obligations[0].id, "debt-2");
+  assert.equal(calculateLedgerSummary(entries, [{ ...payments[0], amountKurus: 100000 }]).remainingKurus, 0);
+  const credit = { id: "credit", supplierId: "A", type: "credit_note", amountKurus: 10000, transactionDate: "2026-09-05" };
+  const credited = calculateLedgerSummary([...entries, credit], payments);
+  assert.equal(credited.paymentKurus, 60000);
+  assert.equal(credited.remainingKurus, 10000);
+  assert.equal(credited.obligations.reduce((sum, entry) => sum + entry.allocatedCreditKurus, 0), 10000);
+});
+
+test("finance regression: accounting, payment reversal and shipment removal update shared totals", async () => {
+  const store = createMemoryStore();
+  await store.update((data) => {
+    data.procurement.suppliers = [{ id: "supplier-finance", name: "Finans Tedarikçi", active: true }];
+    data.procurement.documents = [{ id: "finance-doc", supplierId: "supplier-finance", documentType: "fatura", documentDate: "2026-08-22", branchId: "main", createdBy: "admin" }];
+    data.workforceShipments = [{ id: "finance-shipment", supplierId: "supplier-finance", branchId: "main", userId: "admin", status: "onay_bekliyor", shipmentDate: "2026-08-22", evidenceDocumentIds: ["finance-doc"], items: [{ productId: "stock-1", quantity: 1, unit: "kg", totalKurus: 50000 }], revision: 1 }];
+  });
+  const service = createService(store);
+  const accounting = await service.accountShipment(ADMIN, "finance-shipment", { documentId: "finance-doc", amountKurus: 50000 }, mutation("finance-account", 0));
+  const replay = await service.accountShipment(ADMIN, "finance-shipment", {}, mutation("finance-account", 0));
+  assert.equal(replay.idempotent, true);
+  const duplicate = await service.accountShipment(ADMIN, "finance-shipment", {}, mutation("finance-account-again", accounting.revision));
+  assert.equal(duplicate.alreadyAccounted, true);
+  assert.equal((await store.read()).procurement.ledgerEntries.filter((entry) => entry.type === "invoice").length, 1);
+  const paid = await service.createPayment(ADMIN, { supplierId: "supplier-finance", documentId: "finance-doc", paymentDate: "2026-08-22", amountKurus: 40000 }, mutation("finance-payment", duplicate.revision));
+  const ledger = await service.listLedger(ADMIN);
+  const dashboard = (await service.dashboard(ADMIN)).dashboard;
+  const supplier = (await service.listSuppliers(ADMIN)).suppliers[0];
+  const shipment = (await service.getShipment(ADMIN, "finance-shipment")).shipment;
+  for (const summary of [ledger, dashboard, supplier, shipment.financial]) {
+    assert.deepEqual([summary.debtKurus, summary.paymentKurus, summary.remainingKurus], [50000, 40000, 10000]);
+  }
+  assert.equal(shipment.financial.paymentStatus, "partial");
+  const reversed = await service.reversePayment(ADMIN, paid.payment.id, { reason: "Yanlış ödeme" }, mutation("finance-reverse-payment", paid.revision));
+  assert.equal((await service.listLedger(ADMIN)).paymentKurus, 0);
+  assert.equal((await service.getShipment(ADMIN, "finance-shipment")).shipment.financial.remainingKurus, 50000);
+  await assert.rejects(service.reverseLedgerEntry(ADMIN, accounting.ledgerEntry.id, { reason: "Kaynak koruması" }, mutation("finance-generic-reverse", reversed.revision)), (error) => error.code === "USE_SHIPMENT_REVERSAL");
+  await service.removeShipment(ADMIN, "finance-shipment", { reason: "Yanlış sevkiyat" }, mutation("finance-remove-shipment", reversed.revision));
+  const after = await service.listLedger(ADMIN);
+  assert.deepEqual([after.debtKurus, after.paymentKurus, after.remainingKurus], [0, 0, 0]);
+  assert.equal((await store.read()).procurement.ledgerEntries.length, 4);
+  assert.equal((await service.listTrash(ADMIN)).records.some((item) => item.type === "payment" && item.id === paid.payment.id), true);
+  assert.equal((await service.listShipments(ADMIN, { supplierId: "supplier-finance" })).shipments.length, 0);
+});
+
+test("finance regression: supplier history, branch isolation and financial permissions", async () => {
+  const store = createMemoryStore();
+  await store.update((data) => {
+    data.procurement.suppliers = [{ id: "A", name: "A", active: true }, { id: "B", name: "B", active: true }];
+    data.workforceShipments = [
+      { id: "s-main", supplierId: "A", branchId: "main", status: "taslak", userId: "someone", items: [{ productId: "stock-1", quantity: 1, unitPriceKurus: 50000, totalKurus: 50000, taxKurus: 1000, baseUnitPriceKurus: 50000 }] },
+      { id: "s-other", supplierId: "A", branchId: "other", status: "onaylandı", items: [] },
+      { id: "s-b", supplierId: "B", branchId: "main", status: "onay_bekliyor", items: [] },
+      { id: "s-removed", supplierId: "A", branchId: "main", status: "onaylandı", removedAt: "2026-08-22T09:00:00Z", items: [] }
+    ];
+    data.procurement.ledgerEntries = [
+      { id: "main-debt", supplierId: "A", branchId: "main", shipmentId: "s-main", type: "invoice", amountKurus: -50000, transactionDate: "2026-09-05" },
+      { id: "other-debt", supplierId: "A", branchId: "other", shipmentId: "s-other", type: "invoice", amountKurus: -90000, transactionDate: "2026-09-05" }
+    ];
+    data.procurement.payments = [{ id: "other-payment", supplierId: "A", branchId: "other", amountKurus: 80000, paymentDate: "2026-09-05" }];
+  });
+  const service = createService(store);
+  const reader = { type: "personel", id: "reader", branchId: "main", capabilities: ["supplier.read"], sectionAccess: { suppliers: "view" } };
+  const history = await service.listShipments(reader, { supplierId: "A" });
+  assert.deepEqual(history.shipments.map((item) => item.id), ["s-main"]);
+  assert.equal(history.shipments[0].financial, null);
+  assert.equal(history.shipments[0].pricesVisible, false);
+  assert.equal(Object.keys(history.shipments[0].items[0]).some((key) => /kurus|price|cost/i.test(key)), false);
+  const detail = await service.getShipment(reader, "s-main");
+  assert.deepEqual(detail.ledgerEntries, []);
+  assert.equal(detail.shipment.financial, null);
+  const supplier = (await service.listSuppliers(reader)).suppliers[0];
+  assert.equal(supplier.debtKurus, null);
+  assert.equal(supplier.paymentKurus, null);
+  assert.equal(supplier.remainingKurus, null);
+  const accountant = { ...reader, capabilities: ["supplier.read", "accounting.read", "procurement.read"], sectionAccess: { ledger: "view", dashboard: "view", suppliers: "view" } };
+  const ledger = await service.listLedger(accountant, { supplierId: "A", date: "2026-09-05" });
+  assert.deepEqual([ledger.debtKurus, ledger.paymentKurus, ledger.remainingKurus], [50000, 0, 50000]);
+  assert.equal((await service.dashboard(accountant)).dashboard.debtKurus, 50000);
+  assert.equal((await service.getShipment(accountant, "s-main")).shipment.financial.remainingKurus, 50000);
+  const workbookFile = await service.exportData(accountant, { kind: "ledger", supplierId: "A", date: "2026-09-05" });
+  const workbook = new (require("exceljs").Workbook)();
+  await workbook.xlsx.load(workbookFile.body);
+  const sheet = workbook.getWorksheet("Cari Hesap");
+  assert.deepEqual([sheet.getCell("A9").value, sheet.getCell("D9").value, sheet.getCell("G9").value], [500, 0, 500]);
+  const empty = await service.listLedger(accountant, { date: "2026-09-04" });
+  assert.deepEqual([empty.debtKurus, empty.paymentKurus, empty.remainingKurus], [0, 0, 0]);
+});
+
+test("finance regression: stock approval accounting and removal preserve stock and ledger history", async () => {
+  const stockService = require("../src/stock-service");
+  const store = createMemoryStore();
+  const initial = await store.read();
+  const locationId = initial.stockState.balances.find((balance) => balance.productId === "stock-1" && balance.quantity > 0).locationId;
+  const before = stockService.getProductBalance(initial.stockState, locationId, "stock-1").quantity;
+  await store.update((data) => {
+    data.procurement.suppliers = [{ id: "supplier-stock-finance", name: "Stok Finans", active: true }];
+    const applied = stockService.applyStockMovement(data.stockState, {
+      requestId: "finance-stock-receive", productId: "stock-1", locationId, quantity: 1, unit: "kg", type: "inbound_shipment",
+      shipmentId: "stock-finance-shipment", referenceType: "shipment", referenceId: "stock-finance-shipment"
+    }, ADMIN, { now: "2026-08-22T09:00:00Z" });
+    data.stockState = applied.stockState;
+    data.workforceShipments = [{ id: "stock-finance-shipment", supplierId: "supplier-stock-finance", branchId: "main", status: "onaylandı",
+      stockAppliedAt: "2026-08-22T09:00:00Z", stockMovementRefs: [applied.movement.id], items: [{ productId: "stock-1", quantity: 1, unit: "kg", totalKurus: 50000 }], revision: 1 }];
+  });
+  const service = createService(store);
+  const accounted = await service.accountShipmentAfterStock(ADMIN, "stock-finance-shipment", {}, mutation("finance-stock-account", 0));
+  assert.equal((await service.listLedger(ADMIN)).debtKurus, 50000);
+  const reversed = await service.reverseShipmentAccounting(ADMIN, "stock-finance-shipment", { reason: "Cari düzeltmesi" }, mutation("finance-stock-reverse", accounted.revision));
+  assert.equal((await service.listLedger(ADMIN)).remainingKurus, 0);
+  const beforeRemoval = await store.read();
+  assert.equal(stockService.getProductBalance(beforeRemoval.stockState, locationId, "stock-1").quantity, before + 1);
+  await service.removeShipment(ADMIN, "stock-finance-shipment", { reason: "Sevkiyat kaldırıldı" }, mutation("finance-stock-remove", reversed.revision));
+  const after = await store.read();
+  assert.equal(stockService.getProductBalance(after.stockState, locationId, "stock-1").quantity, before);
+  assert.equal(after.procurement.ledgerEntries.length, 2);
+  assert.equal(after.procurement.ledgerEntries[1].reversalOf, accounted.ledgerEntry.id);
+  assert.equal(after.stockState.movements.some((movement) => movement.type === "reversal"), true);
+});
+
+test("personel stok bildirimi tedarikçi ve tutar yoksa cari gerektirmez; gerçek cari hataları korunur", async () => {
+  const store = createMemoryStore();
+  await store.update((data) => {
+    const legacyPersonnelShipment = data.workforceShipments.find((item) => item.id === "shipment-pending");
+    Object.assign(legacyPersonnelShipment, {
+      status: "onaylandı",
+      stockAppliedAt: "2026-08-22T09:00:00.000Z",
+      accountingStatus: "failed",
+      accountingFailureCode: "SUPPLIER_NOT_FOUND",
+      accountingFailureMessage: "Eski akışta cari kayıt denenmişti."
+    });
+  });
+  const service = createService(store);
+  const request = mutation("personnel-stock-no-cari", 0);
+  const resolved = await service.accountShipmentAfterStock(ADMIN, "shipment-pending", {}, request);
+  const replay = await service.accountShipmentAfterStock(ADMIN, "shipment-pending", {}, request);
+
+  assert.equal(resolved.accountingStatus, "not_required");
+  assert.equal(resolved.accountingNotRequired, true);
+  assert.match(resolved.accountingMessage, /cari işlem gerekmiyor/i);
+  assert.equal(resolved.shipment.canAccount, false);
+  assert.equal(replay.idempotent, true);
+  const snapshot = await store.read();
+  assert.equal(snapshot.workforceShipments[0].accountingStatus, "not_required");
+  assert.equal(snapshot.workforceShipments[0].accountingSource, "personnel_stock_no_financials");
+  assert.equal(snapshot.workforceShipments[0].accountingFailureMessage, "");
+  assert.equal(snapshot.procurement.ledgerEntries.length, 0);
+  assert.equal((await service.dashboard(ADMIN)).dashboard.unaccountedShipments, 0);
+
+  await store.update((data) => {
+    data.procurement.suppliers.push({ id: "supplier-zero", name: "Sıfır Tutar Tedarikçisi", active: true });
+    data.workforceShipments.push(
+      {
+        id: "personnel-positive-without-supplier",
+        shipmentSource: "personnel_stock",
+        userId: "person-1",
+        branchId: "main",
+        status: "onaylandı",
+        stockAppliedAt: "2026-08-22T09:00:00.000Z",
+        accountingStatus: "not_posted",
+        items: [{ productId: "stock-1", quantity: 1, unit: "kg", totalKurus: 12500 }]
+      },
+      {
+        id: "personnel-zero-with-supplier",
+        shipmentSource: "personnel_stock",
+        userId: "person-1",
+        supplierId: "supplier-zero",
+        branchId: "main",
+        status: "onaylandı",
+        stockAppliedAt: "2026-08-22T09:00:00.000Z",
+        accountingStatus: "not_posted",
+        items: [{ productId: "stock-1", quantity: 1, unit: "kg", totalKurus: 0 }]
+      }
+    );
+  });
+  await assert.rejects(
+    service.accountShipmentAfterStock(ADMIN, "personnel-positive-without-supplier", {}, mutation("personnel-positive-error", 1)),
+    (error) => /Tedarikçi/i.test(error.message)
+  );
+  await assert.rejects(
+    service.accountShipmentAfterStock(ADMIN, "personnel-zero-with-supplier", {}, mutation("personnel-zero-error", 1)),
+    (error) => /sıfırdan büyük/i.test(error.message)
+  );
+});
+
+test("mal kabul ve muhasebe yetkileri ayrıdır; stok hatası sevkiyatı yeniden denenebilir durumda tutar", async () => {
+  const store = createMemoryStore();
+  const initial = await store.read();
+  const approver = {
+    type: "personel",
+    id: "receipt-only",
+    name: "Mal Kabul Yetkilisi",
+    branchId: initial.workforceShipments[0].branchId || "main",
+    capabilities: ["receipt.approve"]
+  };
+  const service = createService(store);
+
+  await assert.rejects(
+    service.accountShipmentAfterStock(approver, "shipment-pending", {}, mutation("receipt-cannot-post", 0)),
+    (error) => error.status === 403 && error.code === "PROCUREMENT_CAPABILITY_REQUIRED"
+      && error.details && error.details.capability === "accounting.post"
+  );
+  await assert.rejects(
+    service.recordShipmentAccountingFailure(approver, "shipment-pending", { code: "TEST" }, mutation("receipt-cannot-mark-ledger", 0)),
+    (error) => error.status === 403 && error.code === "PROCUREMENT_CAPABILITY_REQUIRED"
+  );
+
+  const failure = await service.recordShipmentStockFailure(approver, "shipment-pending", {
+    code: "STOCK_SERVICE_UNAVAILABLE",
+    message: "Stok servisi geçici olarak kullanılamıyor."
+  }, mutation("retryable-stock-failure", 0));
+
+  assert.equal(failure.shipment.status, "onay_bekliyor");
+  assert.equal(failure.shipment.operationalStatus, "onay_bekliyor");
+  assert.equal(failure.shipment.stockStatus, "failed");
+  assert.equal(failure.shipment.canApprove, true);
+  assert.equal(failure.shipment.procurementFinalizedAt, null);
+  const saved = await store.read();
+  assert.equal(saved.workforceShipments[0].status, "onay_bekliyor");
+  assert.equal(saved.workforceShipments[0].operationalStatus, "onay_bekliyor");
+  assert.equal(saved.workforceShipments[0].procurementFinalizedAt, null);
+  assert.equal(saved.procurement.ledgerEntries.length, 0);
+});
+
+test("procurement migration geriye uyumlu ve tekrar çalıştırıldığında idempotenttir", () => {
+  const legacy = {
+    schemaVersion: 16,
+    stockState: {
+      products: [{ id: "stock-1", productCode: "KHV-1", name: "Kahve", unit: "kg", stockQuantity: 4, active: true }],
+      movements: [{ id: "move-1", shipmentId: "shipment-1", transactionRef: "stock-ref-1", type: "inbound_shipment" }]
+    },
+    recipeUsers: [{ id: "person-1", username: "barista", name: "Barista", active: true }],
+    workforceShipments: [{
+      id: "shipment-1",
+      status: "approved",
+      stockAppliedAt: "2026-08-01T10:00:00.000Z",
+      stockMovementRef: "stock-ref-1",
+      items: [{ productId: "stock-1", quantity: 2, unit: "kg" }]
+    }]
+  };
+
+  const first = migrateStore(legacy);
+  const second = migrateStore(first);
+
+  assert.equal(first.schemaVersion, STORE_SCHEMA_VERSION);
+  assert.equal(first.procurement.version, 1);
+  assert.equal(first.procurement.revision, 0);
+  assert.deepEqual(Object.keys(first.procurement).sort(), [
+    "auditEvents", "documents", "idempotencyRecords", "ledgerEntries", "payments", "revision", "settings",
+    "supplierIndependentProducts", "supplierProductLinks", "suppliers", "version"
+  ]);
+  assert.equal(first.workforceShipments.length, 1);
+  assert.equal(first.workforceShipments[0].stockAppliedAt, "2026-08-01T10:00:00.000Z");
+  assert.equal(first.workforceShipments[0].stockMovementRef, "stock-ref-1");
+  assert.equal(first.workforceShipments[0].accountingStatus, "not_posted");
+  assert.equal(first.workforceShipments[0].branchId, "main");
+  assert.deepEqual(first.recipeUsers[0].faturaCapabilities, []);
+  assert.equal(first.recipeUsers[0].faturaAccessEnabled, false);
+  assert.equal(first.recipeUsers[0].faturaTemplate, "ozel");
+  assert.deepEqual(second.procurement, first.procurement);
+  assert.equal(second.workforceShipments.length, 1);
+});
+
+test("mal kabul, belge, muhasebe ve ödeme etkileri birbirinden ayrıdır", async () => {
+  const store = createMemoryStore();
+  const service = createService(store);
+  const stockBefore = (await store.read()).stockState.products[0].stockQuantity;
+
+  const supplierResult = await service.createSupplier(ADMIN, {
+    code: "TED-001",
+    name: "Deneme Tedarikçi",
+    paymentTermDays: 15
+  }, mutation("supplier-create", 0));
+  const supplierId = supplierResult.supplier.id;
+
+  const shipmentResult = await service.createShipment(ADMIN, {
+    supplierId,
+    documentType: "fatura",
+    items: [{ stockProductId: "stock-1", quantity: 2, unit: "kg", unitPriceKurus: 1250 }]
+  }, mutation("shipment-create", 1));
+  const shipmentId = shipmentResult.shipment.id;
+  assert.equal(shipmentResult.shipment.status, "taslak");
+  assert.equal(shipmentResult.shipment.shipmentNumber, "SVK-2026-000002");
+  const shipmentReplay = await service.createShipment(ADMIN, {
+    supplierId,
+    documentType: "fatura",
+    items: [{ stockProductId: "stock-1", quantity: 2, unit: "kg", unitPriceKurus: 1250 }]
+  }, mutation("shipment-create", 1));
+  assert.equal(shipmentReplay.idempotent, true);
+  assert.equal(shipmentReplay.shipment.shipmentNumber, shipmentResult.shipment.shipmentNumber);
+  assert.equal((await store.read()).shipmentNumberSequences[2026], 2);
+  assert.equal((await store.read()).stockState.products[0].stockQuantity, stockBefore);
+
+  await service.submitShipment(ADMIN, shipmentId, {}, mutation("shipment-submit", 2));
+  assert.equal((await store.read()).stockState.products[0].stockQuantity, stockBefore);
+
+  const documentResult = await service.recordDocument(ADMIN, {
+    supplierId,
+    shipmentIds: [shipmentId],
+    documentType: "fatura",
+    documentDate: "2026-08-22"
+  }, {
+    physicalName: "random-private.webp",
+    thumbnailPhysicalName: "random-private.thumb.webp",
+    originalName: "fatura.webp",
+    mimeType: "image/webp",
+    sizeBytes: 2048,
+    sha256: "a".repeat(64)
+  }, mutation("document-upload", 3));
+  assert.equal(documentResult.document.physicalName, undefined);
+  assert.equal((await store.read()).procurement.ledgerEntries.length, 0);
+  assert.equal((await store.read()).stockState.products[0].stockQuantity, stockBefore);
+
+  const accountResult = await service.accountShipment(ADMIN, shipmentId, {
+    documentId: documentResult.document.id,
+    amountKurus: 2500
+  }, mutation("shipment-account", 4));
+  assert.equal(accountResult.ledgerEntry.amountKurus, -2500);
+  assert.equal((await store.read()).stockState.products[0].stockQuantity, stockBefore);
+
+  const replay = await service.accountShipment(ADMIN, shipmentId, {
+    amountKurus: 9999
+  }, mutation("shipment-account", 4));
+  assert.equal(replay.idempotent, true);
+  assert.equal((await store.read()).procurement.ledgerEntries.length, 1);
+  const alreadyAccounted = await service.accountShipment(ADMIN, shipmentId, { amountKurus: 2500 }, mutation("shipment-account-new", 5));
+  assert.equal(alreadyAccounted.alreadyAccounted, true);
+  assert.equal((await store.read()).procurement.ledgerEntries.length, 1);
+
+  const paymentResult = await service.createPayment(ADMIN, {
+    supplierId,
+    documentId: documentResult.document.id,
+    amountKurus: 1000,
+    paymentDate: "2026-08-22"
+  }, mutation("payment-create", 6));
+  assert.equal(paymentResult.ledgerEntry.amountKurus, 1000);
+  assert.equal((await store.read()).stockState.products[0].stockQuantity, stockBefore);
+
+  const reversePayment = await service.reversePayment(ADMIN, paymentResult.payment.id, {
+    reason: "Yanlış banka hesabı"
+  }, mutation("payment-reverse", 7));
+  assert.equal(reversePayment.ledgerEntry.amountKurus, -1000);
+
+  const reverseAccounting = await service.reverseShipmentAccounting(ADMIN, shipmentId, {
+    reason: "Fatura iptal edildi"
+  }, mutation("account-reverse", 8));
+  assert.equal(reverseAccounting.ledgerEntry.amountKurus, 2500);
+  const independentExpense = await service.createLedgerEntry(ADMIN, {
+    supplierId,
+    type: "adjustment",
+    amountKurus: -500,
+    note: "Stok dışı masraf"
+  }, mutation("ledger-create", 9));
+  assert.equal(independentExpense.ledgerEntry.shipmentId, "");
+  const independentReversal = await service.reverseLedgerEntry(ADMIN, independentExpense.ledgerEntry.id, {
+    reason: "Masraf kaydı düzeltildi"
+  }, mutation("ledger-reverse", 10));
+  assert.equal(independentReversal.ledgerEntry.amountKurus, 500);
+  const snapshot = await store.read();
+  assert.equal(snapshot.procurement.ledgerEntries.length, 6);
+  assert.equal(snapshot.procurement.ledgerEntries.reduce((sum, entry) => sum + entry.amountKurus, 0), 0);
+  assert.equal(snapshot.stockState.products[0].stockQuantity, stockBefore);
+});
+
+test("capability, pasif tedarikçi ve revision kuralları server tarafında uygulanır", async () => {
+  const store = createMemoryStore();
+  const service = createService(store);
+  const operationActor = {
+    type: "personel",
+    id: "person-1",
+    name: "Operasyon",
+    role: "operasyon",
+    branchId: "branch-server",
+    capabilities: ["procurement.read", "supplier.read", "receipt.create", "receipt.submit"]
+  };
+
+  await assert.rejects(
+    service.createSupplier(operationActor, { code: "X", name: "Yetkisiz" }, mutation("forbidden-supplier", 0)),
+    (error) => error.status === 403 && error.code === "PROCUREMENT_CAPABILITY_REQUIRED"
+  );
+  await assert.rejects(
+    service.createSupplier(ADMIN, { code: "X", name: "Eksik revision" }, { requestId: "missing-revision" }),
+    (error) => error.status === 400 && error.code === "EXPECTED_REVISION_REQUIRED"
+  );
+
+  const supplier = await service.createSupplier(ADMIN, { code: "PAS-1", name: "Pasif Aday" }, mutation("supplier-create", 0));
+  await service.deactivateSupplier(ADMIN, supplier.supplier.id, { reason: "Artık çalışılmıyor" }, mutation("supplier-deactivate", 1));
+  await assert.rejects(
+    service.createShipment(operationActor, {
+      supplierId: supplier.supplier.id,
+      items: [{ stockProductId: "stock-1", quantity: 1, unit: "kg", unitPriceKurus: 100 }],
+      branchId: "client-forged"
+    }, mutation("inactive-shipment", 2)),
+    (error) => error.status === 409 && error.code === "SUPPLIER_INACTIVE"
+  );
+  assert.equal((await store.read()).workforceShipments.length, 1);
+});
+
+test("Fatura erişim şablonları kalıcıdır, bildirim üretir ve personel sevkiyatları şube kapsamında kalır", async () => {
+  const store = createMemoryStore();
+  let sequence = 0;
+  const workforceInvalidations = [];
+  const service = createProcurementService({
+    store,
+    notificationService,
+    notifyWorkforceChange: (event) => workforceInvalidations.push(event),
+    now: () => new Date("2026-08-22T10:00:00.000Z"),
+    createId: (prefix) => `${prefix}-${++sequence}`
+  });
+
+  const before = await service.listUsers(ADMIN);
+  const malKabul = before.accessTemplates.find((item) => item.key === "mal_kabul");
+  assert.ok(malKabul);
+  assert.deepEqual(malKabul.sections, ["dashboard", "suppliers", "documents", "trash"]);
+
+  const updated = await service.updateUserAccess(ADMIN, "person-1", {
+    faturaTemplate: "mal_kabul",
+    faturaAccessEnabled: true
+  }, mutation("access-template", 0));
+  assert.equal(updated.user.faturaAccessEnabled, true);
+  assert.equal(updated.user.faturaTemplate, "mal_kabul");
+  assert.ok(updated.user.faturaCapabilities.includes("receipt.approve"));
+  assert.deepEqual(updated.user.faturaSections, ["dashboard", "suppliers", "documents", "trash"]);
+  let snapshot = await store.read();
+  assert.equal(snapshot.notifications.filter((item) => item.eventType === "procurement_access_updated").length, 1);
+  assert.equal(snapshot.procurement.auditEvents.at(-1).action, "user-access.update");
+
+  const otherBranchActor = {
+    type: "personel",
+    id: "other-person",
+    name: "Diğer Şube",
+    role: "mal_kabul",
+    branchId: "branch-other",
+    capabilities: ["receipt.approve", "receipt.reject"]
+  };
+  const list = await service.listShipments(otherBranchActor);
+  assert.equal(list.shipments.length, 0);
+  const sameBranchReader = await service.listShipments({
+    ...otherBranchActor,
+    id: "branch-reader",
+    branchId: "main",
+    capabilities: ["procurement.read"]
+  });
+  assert.equal(sameBranchReader.shipments.length, 1, "procurement.read aynı şubedeki Mal Kabul kayıtlarını görmeli");
+  await assert.rejects(
+    service.getShipment(otherBranchActor, "shipment-pending"),
+    (error) => error.status === 404 && error.code === "SHIPMENT_NOT_FOUND"
+  );
+  snapshot = await store.read();
+  assert.equal(snapshot.workforceShipments[0].status, "onay_bekliyor");
+
+  const receiptActor = {
+    type: "personel",
+    id: "receipt-main",
+    name: "Mal Kabul",
+    role: "mal_kabul",
+    branchId: "main",
+    template: "mal_kabul",
+    capabilities: ["receipt.create", "receipt.submit", "receipt.reject", "documents.read", "documents.upload"]
+  };
+  const created = await service.createShipment(receiptActor, {
+    items: [{ stockProductId: "stock-1", quantity: 1, unit: "kg", unitPriceKurus: 12345 }]
+  }, mutation("branch-shipment-create", 1));
+  const submitted = await service.submitShipment(receiptActor, created.shipment.id, {}, mutation("branch-shipment-submit", 2));
+  const projected = await service.getShipment(receiptActor, submitted.shipment.id);
+  assert.equal(projected.ledgerEntries.length, 0, "muhasebe yetkisi olmayan Mal Kabul kullanıcısına cari kayıt sızmamalı");
+  assert.equal(Object.hasOwn(projected.shipment.items[0], "unitPriceKurus"), false, "mali satır alanı capability projection ile gizlenmeli");
+  await service.rejectShipment(receiptActor, submitted.shipment.id, { reason: "Kontrol reddi" }, mutation("branch-shipment-reject", 3));
+  assert.equal(workforceInvalidations.length, 3, "create/submit/reject mutationları workforce SSE invalidation üretmeli");
+  snapshot = await store.read();
+  const rejection = snapshot.notifications.find((item) => item.eventType === "shipment_rejected" && item.entityId === submitted.shipment.id);
+  assert.match(rejection.deepLink, /^\/personel\/\?section=shipment&shipmentId=/);
+});
+
+test("belge, cari ve ödeme kayıtları personel için şube kapsamında kalır", async () => {
+  const store = createMemoryStore();
+  await store.update((data) => {
+    data.procurement.documents = [
+      { id: "doc-main", branchId: "main", documentType: "fatura", originalName: "main.png", createdBy: "main-user" },
+      { id: "doc-other", branchId: "other", documentType: "fatura", originalName: "other.png", createdBy: "other-user" }
+    ];
+    data.procurement.ledgerEntries = [
+      { id: "ledger-main", branchId: "main", supplierId: "supplier-main", type: "adjustment", amountKurus: -100, createdAt: "2026-08-22T08:00:00.000Z" },
+      { id: "ledger-other", branchId: "other", supplierId: "supplier-other", type: "payment", amountKurus: 100, createdAt: "2026-08-22T09:00:00.000Z" }
+    ];
+    data.procurement.payments = [
+      { id: "payment-other", branchId: "other", supplierId: "supplier-other", ledgerEntryId: "ledger-other", amountKurus: 100, status: "recorded" }
+    ];
+    return data;
+  });
+  const service = createService(store);
+  const mainActor = {
+    type: "personel",
+    id: "main-accounting",
+    name: "Ana Şube Muhasebe",
+    branchId: "main",
+    capabilities: ["documents.read", "accounting.read", "accounting.reverse", "payment.reverse"]
+  };
+  const documents = await service.listDocuments(mainActor);
+  assert.deepEqual(documents.documents.map((item) => item.id), ["doc-main"]);
+  await assert.rejects(service.getDocument(mainActor, "doc-other"), (error) => error.status === 404);
+  const ledger = await service.listLedger(mainActor);
+  assert.deepEqual(ledger.entries.map((item) => item.id), ["ledger-main"]);
+  const accountingPosterShipments = await service.listShipments({
+    ...mainActor,
+    capabilities: ["accounting.post"]
+  });
+  assert.equal(accountingPosterShipments.shipments.length, 1, "mutation capability sahibi GET shipments sözleşmesinden dışlanmamalı");
+  await assert.rejects(
+    service.reversePayment(mainActor, "payment-other", { reason: "Yetkisiz" }, mutation("cross-branch-payment", 0)),
+    (error) => error.status === 404 && error.code === "PAYMENT_NOT_FOUND"
+  );
+});
+
+test("route katmanı oturumu/capability'yi zorunlu kılar ve stok onayını ortak callback'e delege eder", async (t) => {
+  const store = createMemoryStore();
+  const documentsDir = await fs.mkdtemp(path.join(os.tmpdir(), "tahmisci-proc-route-"));
+  t.after(() => fs.rm(documentsDir, { recursive: true, force: true }));
+  const documentService = createProcurementDocumentService({ documentsDir, maxUploadBytes: 1024 * 1024 });
+  let approvalCalls = 0;
+  const app = express();
+  app.use(express.json());
+  const auth = {
+    requireRecipe(req, res, next) {
+      const role = req.get("X-Test-Role");
+      if (!role) return res.status(401).json({ ok: false, message: "Oturum gerekli." });
+      if (role === "preview") {
+        req.authSession = { role: "admin" };
+        req.recipe = { role: "preview", sessionRole: "admin", previewRole: "admin" };
+      } else if (role === "admin") {
+        req.authSession = { role: "admin" };
+        req.recipe = { role: "admin", sessionRole: "admin" };
+      } else {
+        req.authSession = { role: "personel", userId: "person-1" };
+        req.recipe = { role: "recipe", sessionRole: "personel", userId: "person-1" };
+      }
+      return next();
+    }
+  };
+  const runtime = registerProcurementRoutes({
+    app,
+    store,
+    auth,
+    documentService,
+    approveWorkforceShipment: async (input) => {
+      approvalCalls += 1;
+      assert.equal(input.shipmentId, "shipment-pending");
+      assert.equal(input.actor.type, "admin");
+      await store.update((data) => {
+        const shipment = data.workforceShipments.find((item) => item.id === input.shipmentId);
+        Object.assign(shipment, {
+          status: "onaylandı",
+          stockAppliedAt: "2026-08-22T10:00:00.000Z",
+          stockMovementRef: "route-stock-movement",
+          stockMovementRefs: ["route-stock-movement"]
+        });
+        data.revisions.workforce = 9;
+      });
+      return { revision: 9, idempotent: false, shipment: { id: input.shipmentId, stockAppliedAt: "2026-08-22T10:00:00.000Z" } };
+    }
+  });
+  app.use((error, req, res, next) => {
+    if (res.headersSent) return next(error);
+    return res.status(error.status || 500).json({ ok: false, message: error.message, code: error.code });
+  });
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  assert.equal((await fetch(`${base}/api/procurement/v1/context`)).status, 401);
+  assert.equal((await fetch(`${base}/api/procurement/v1/context`, { headers: { "X-Test-Role": "preview" } })).status, 401);
+  let response = await fetch(`${base}/api/procurement/v1/suppliers`, { headers: { "X-Test-Role": "personel" } });
+  assert.equal(response.status, 200);
+  response = await fetch(`${base}/api/procurement/v1/suppliers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Test-Role": "personel", "Idempotency-Key": "route-forbidden" },
+    body: JSON.stringify({ expectedRevision: 0, code: "Y", name: "Yetkisiz" })
+  });
+  assert.equal(response.status, 403);
+
+  response = await fetch(`${base}/api/procurement/v1/shipments/shipment-pending/approve-stock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Test-Role": "admin", "Idempotency-Key": "route-approve-1" },
+    body: JSON.stringify({ expectedRevision: 0, note: "Onay" })
+  });
+  assert.equal(response.status, 200);
+  const approval = await response.json();
+  assert.equal(approval.workforceRevision, 10);
+  assert.equal(approval.accountingStatus, "not_required");
+  assert.equal(approval.accountingNotRequired, true);
+  assert.match(approval.accountingMessage, /cari işlem gerekmiyor/i);
+  assert.equal(approvalCalls, 1);
+  const approvedSnapshot = await store.read();
+  assert.equal(approvedSnapshot.procurement.ledgerEntries.length, 0);
+  assert.equal(approvedSnapshot.workforceShipments[0].accountingStatus, "not_required");
+  assert.equal(typeof runtime.service.subscribe, "function");
+
+  const sseController = new AbortController();
+  const sseResponse = await fetch(`${base}/api/procurement/v1/events`, {
+    headers: { "X-Test-Role": "personel" },
+    signal: sseController.signal
+  });
+  assert.equal(sseResponse.status, 200);
+  const reader = sseResponse.body.getReader();
+  const decoder = new TextDecoder();
+  await reader.read(); // ready olayı
+  runtime.service.publishExternalEvent({
+    type: "document.upload",
+    entityType: "document",
+    entityId: "other-branch-secret-document",
+    branchId: "other",
+    revision: 99
+  });
+  const eventChunk = await Promise.race([
+    reader.read(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("SSE invalidation alınamadı.")), 1500))
+  ]);
+  const personelEvent = decoder.decode(eventChunk.value || new Uint8Array());
+  assert.match(personelEvent, /procurement\.invalidated/);
+  assert.doesNotMatch(personelEvent, /other-branch-secret-document|entityId/);
+  await reader.cancel();
+  sseController.abort();
+
+  response = await fetch(`${base}/api/procurement/v1/documents`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "image/png",
+      "X-Test-Role": "admin",
+      "X-File-Name": encodeURIComponent("kamera-fatura-kanıt.png"),
+      "X-Document-Type": "fatura",
+      "X-Expected-Revision": String((await (await fetch(`${base}/api/procurement/v1/context`, { headers: { "X-Test-Role": "admin" } })).json()).revision),
+      "Idempotency-Key": "route-document-1"
+    },
+    body: PNG_1X1
+  });
+  assert.equal(response.status, 201, await response.clone().text());
+  const uploaded = await response.json();
+  assert.equal(uploaded.document.physicalName, undefined);
+  assert.equal(uploaded.document.mimeType, "image/png");
+  assert.equal(uploaded.document.originalName, "kamera-fatura-kanıt.png");
+
+  assert.equal((await fetch(`${base}${uploaded.document.contentUrl}`)).status, 401);
+  response = await fetch(`${base}${uploaded.document.contentUrl}`, { headers: { "X-Test-Role": "admin" } });
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.match(response.headers.get("cache-control"), /no-store/);
+  assert.equal(response.headers.get("cross-origin-resource-policy"), "same-origin");
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), PNG_1X1);
+});
+
+test("stok onay rotası görevler ayrılığını ve 5xx sonrası yeniden denemeyi korur", async (t) => {
+  const store = createMemoryStore();
+  await store.update((data) => {
+    const first = data.workforceShipments[0];
+    first.branchId = "main";
+    first.operationalStatus = "onay_bekliyor";
+    first.accountingStatus = "not_posted";
+    data.workforceShipments.push({
+      ...structuredClone(first),
+      id: "shipment-retry",
+      revision: 1
+    });
+  });
+  const service = createService(store);
+  const receiptOnly = {
+    type: "personel",
+    id: "receipt-route-only",
+    name: "Mal Kabul Yetkilisi",
+    branchId: "main",
+    capabilities: ["receipt.approve"],
+    sectionAccess: { shipments: "full", stock: "full", suppliers: "full", documents: "full" }
+  };
+  let retryFailurePending = true;
+  let accountingCalls = 0;
+  const guardedService = new Proxy(service, {
+    get(target, property, receiver) {
+      if (property === "accountShipmentAfterStock") {
+        return async (...args) => {
+          accountingCalls += 1;
+          return target.accountShipmentAfterStock(...args);
+        };
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const app = express();
+  app.use(express.json());
+  const auth = {
+    requireRecipe(req, res, next) {
+      const role = req.get("X-Test-Role");
+      if (!role) return res.status(401).json({ ok: false });
+      req.authSession = { role: role === "admin" ? "admin" : "personel" };
+      req.recipe = { role: role === "admin" ? "admin" : "recipe", sessionRole: req.authSession.role };
+      return next();
+    }
+  };
+  registerProcurementRoutes({
+    app,
+    store,
+    auth,
+    service: guardedService,
+    resolveActor: (req) => req.get("X-Test-Role") === "receipt" ? receiptOnly : ADMIN,
+    approveWorkforceShipment: async ({ shipmentId }) => {
+      if (shipmentId === "shipment-retry" && retryFailurePending) {
+        retryFailurePending = false;
+        throw Object.assign(new Error("Stok altyapısı geçici olarak kullanılamıyor."), {
+          status: 503,
+          code: "STOCK_SERVICE_UNAVAILABLE"
+        });
+      }
+      let savedShipment;
+      await store.update((data) => {
+        const shipment = data.workforceShipments.find((item) => item.id === shipmentId);
+        Object.assign(shipment, {
+          status: "onaylandı",
+          operationalStatus: "arşivlendi",
+          stockStatus: "applied",
+          stockAppliedAt: "2026-08-22T10:00:00.000Z",
+          stockMovementRef: `movement-${shipmentId}`,
+          stockMovementRefs: [`movement-${shipmentId}`],
+          revision: Number(shipment.revision || 0) + 1
+        });
+        data.revisions.workforce = Number(data.revisions.workforce || 0) + 1;
+        savedShipment = structuredClone(shipment);
+      });
+      const snapshot = await store.read();
+      return {
+        ok: true,
+        revision: snapshot.revisions.workforce,
+        procurementRevision: snapshot.procurement.revision,
+        shipment: savedShipment
+      };
+    }
+  });
+  app.use((error, req, res, next) => {
+    if (res.headersSent) return next(error);
+    return res.status(error.status || 500).json({ ok: false, message: error.message, code: error.code });
+  });
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  let response = await fetch(`${base}/api/procurement/v1/shipments/shipment-pending/approve-stock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Test-Role": "receipt", "Idempotency-Key": "receipt-stock-only" },
+    body: JSON.stringify({ expectedRevision: 0, destinationLocationId: "main" })
+  });
+  assert.equal(response.status, 200);
+  let payload = await response.json();
+  assert.equal(payload.accountingStatus, "not_posted");
+  assert.equal(payload.accountingPending, true);
+  assert.match(payload.accountingMessage, /ayrı accounting\.post yetkili/i);
+  assert.equal(accountingCalls, 0, "receipt.approve aktörü otomatik cari servisine girmemeli");
+  assert.equal((await store.read()).procurement.ledgerEntries.length, 0);
+
+  response = await fetch(`${base}/api/procurement/v1/shipments/shipment-retry/approve-stock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Test-Role": "admin", "Idempotency-Key": "retry-stock-first" },
+    body: JSON.stringify({ expectedRevision: 0, destinationLocationId: "main" })
+  });
+  assert.equal(response.status, 503);
+  payload = await response.json();
+  assert.equal(payload.code, "STOCK_SERVICE_UNAVAILABLE");
+  assert.equal(payload.canRetry, true);
+  assert.equal(payload.shipment.status, "onay_bekliyor");
+  assert.equal(payload.shipment.operationalStatus, "onay_bekliyor");
+  assert.equal(payload.shipment.procurementFinalizedAt, null);
+
+  response = await fetch(`${base}/api/procurement/v1/shipments/shipment-retry/approve-stock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Test-Role": "admin", "Idempotency-Key": "retry-stock-second" },
+    body: JSON.stringify({ expectedRevision: payload.revision, destinationLocationId: "main" })
+  });
+  assert.equal(response.status, 200, await response.clone().text());
+  const retried = await response.json();
+  assert.equal(retried.accountingStatus, "not_required");
+  const finalSnapshot = await store.read();
+  assert.equal(finalSnapshot.workforceShipments.find((item) => item.id === "shipment-retry").status, "onaylandı");
+  assert.equal(finalSnapshot.procurement.ledgerEntries.length, 0);
+  assert.equal(accountingCalls, 1, "accounting.post yetkili aktör başarılı stoktan sonra cari kararını çalıştırmalı");
+});
+
+test("özel belge API metadata'sı fiziksel yolu sızdırmaz", () => {
+  const safe = safeDocumentMetadata({
+    id: "document-1",
+    originalName: "fatura.webp",
+    mimeType: "image/webp",
+    physicalName: "secret-random-name.webp",
+    thumbnailPhysicalName: "secret-random-name.thumb.webp",
+    absolutePath: "C:\\private\\secret-random-name.webp"
+  });
+  assert.equal(safe.physicalName, undefined);
+  assert.equal(safe.thumbnailPhysicalName, undefined);
+  assert.equal(safe.absolutePath, undefined);
+  assert.equal(safe.contentUrl, "/api/procurement/v1/documents/document-1/content");
+});
+
+test("belgesiz mal kabul ve ödeme vadesi bildirimleri dedupe edilerek üretilir", async () => {
+  const store = createMemoryStore();
+  let sequence = 0;
+  const service = createProcurementService({
+    store,
+    notificationService,
+    now: () => new Date("2026-08-22T10:00:00.000Z"),
+    createId: (prefix) => `${prefix}-${++sequence}`
+  });
+  const supplier = await service.createSupplier(ADMIN, {
+    code: "VDE-1", name: "Vadeli Tedarikçi", paymentTermDays: 3
+  }, mutation("notice-supplier", 0));
+  const shipment = await service.createShipment(ADMIN, {
+    supplierId: supplier.supplier.id,
+    items: [{ stockProductId: "stock-1", quantity: 1, unit: "kg", unitPriceKurus: 1000 }]
+  }, mutation("notice-shipment", 1));
+  await service.submitShipment(ADMIN, shipment.shipment.id, {}, mutation("notice-submit", 2));
+  let snapshot = await store.read();
+  assert.deepEqual(snapshot.notifications.map((item) => item.eventType).sort(), ["document_missing", "shipment_submitted"]);
+  for (const notification of snapshot.notifications) {
+    assert.equal(notification.recipientRole, "manager");
+    assert.equal(notification.appTarget, "yonetici");
+    assert.equal(notification.deepLink, `/yonetici/?section=shipments&procurementView=shipmentArchive&shipmentId=${shipment.shipment.id}`);
+  }
+
+  const document = await service.recordDocument(ADMIN, {
+    supplierId: supplier.supplier.id,
+    shipmentIds: [shipment.shipment.id],
+    documentType: "fatura",
+    documentDate: "2026-08-22"
+  }, {
+    physicalName: "notice-private.webp",
+    thumbnailPhysicalName: "notice-private.thumb.webp",
+    originalName: "notice.webp",
+    mimeType: "image/webp",
+    sizeBytes: 100,
+    sha256: "b".repeat(64)
+  }, mutation("notice-document", 3));
+  await service.accountShipment(ADMIN, shipment.shipment.id, {
+    documentId: document.document.id,
+    amountKurus: 1000,
+    dueDate: "2026-08-25",
+    note: "Vadeli alım"
+  }, mutation("notice-invoice", 4));
+  snapshot = await store.read();
+  const created = [];
+  createProcurementPaymentReminders(snapshot, new Date("2026-08-22T10:00:00.000Z"), created);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].eventType, "payment_due_soon");
+  assert.match(created[0].deepLink, /^\/yonetici\/\?section=procurementLedger&procurementView=ledger&entityId=/);
+  createProcurementPaymentReminders(snapshot, new Date("2026-08-22T11:00:00.000Z"), created);
+  assert.equal(created.length, 1, "aynı vade aynı gün ikinci bildirim üretmemeli");
+});
+
+function mutation(requestId, expectedRevision) {
+  return { requestId: `${requestId}-00000000`.slice(0, 40), expectedRevision };
+}
+
+function createService(store) {
+  let sequence = 0;
+  return createProcurementService({
+    store,
+    now: () => new Date("2026-08-22T10:00:00.000Z"),
+    createId: (prefix) => `${prefix}-${++sequence}`
+  });
+}
+
+function createMemoryStore() {
+  let state = normalizeStore({
+    schemaVersion: STORE_SCHEMA_VERSION,
+    storeRevision: 0,
+    revisions: { publish: 0, workforce: 0, procurement: 0 },
+    stockState: {
+      products: [{
+        id: "stock-1",
+        productCode: "KHV-1",
+        name: "Kahve",
+        unit: "kg",
+        stockQuantity: 5,
+        active: true,
+        sourcePresent: true
+      }],
+      movements: []
+    },
+    recipeUsers: [{
+      id: "person-1",
+      username: "operasyon",
+      name: "Operasyon",
+      active: true,
+      branchId: "branch-server",
+      faturaRole: "operasyon",
+      faturaCapabilities: ["procurement.read", "supplier.read", "receipt.create", "receipt.submit"]
+    }],
+    workforceShipments: [{
+      id: "shipment-pending",
+      userId: "person-1",
+      userName: "Operasyon",
+      status: "onay_bekliyor",
+      items: [{ stockProductId: "stock-1", productId: "stock-1", quantity: 1, unit: "kg" }],
+      createdAt: "2026-08-20T10:00:00.000Z",
+      updatedAt: "2026-08-20T10:00:00.000Z",
+      revision: 1
+    }],
+    procurement: {}
+  });
+  const noChange = Symbol("no-change");
+  return {
+    async read() {
+      return structuredClone(state);
+    },
+    async update(mutator) {
+      const draft = structuredClone(state);
+      const result = await mutator(draft, { noChange });
+      if (result !== noChange) state = normalizeStore(result === undefined ? draft : result);
+      return structuredClone(state);
+    }
+  };
+}

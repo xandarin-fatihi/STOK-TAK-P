@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Muhasebe uygulama işareti</title>
+  <desc id="desc">Bordo zemin üzerinde mali defter ve onay işareti</desc>
+  <rect x="56" y="56" width="912" height="912" rx="224" fill="#4b2734"/>
+  <path d="M310 218h330l106 106v478c0 30-24 54-54 54H310c-30 0-54-24-54-54V272c0-30 24-54 54-54Z" fill="#fbf7ef"/>
+  <path d="M640 218v106h106" fill="#e89a79"/>
+  <path d="M352 404h292M352 500h292M352 596h166" fill="none" stroke="#4b2734" stroke-width="38" stroke-linecap="round"/>
+  <path d="m514 700 66 65 126-151" fill="none" stroke="#e89a79" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

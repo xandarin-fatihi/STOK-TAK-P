@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Personel uygulama işareti</title>
+  <desc id="desc">Koyu petrol zemin üzerinde personel ve önlüğü simgeleyen insan figürü</desc>
+  <rect x="56" y="56" width="912" height="912" rx="224" fill="#173b3a"/>
+  <circle cx="512" cy="346" r="128" fill="#fbf7ef"/>
+  <path d="M258 786c0-158 113-270 254-270s254 112 254 270v38H258v-38Z" fill="#fbf7ef"/>
+  <path d="m410 535 102 114 102-114 46 35-39 254H403l-39-254 46-35Z" fill="#6ec7a8"/>
+  <path d="M448 720h128" fill="none" stroke="#173b3a" stroke-width="34" stroke-linecap="round"/>
+</svg>

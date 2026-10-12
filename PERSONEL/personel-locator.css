@@ -1,0 +1,660 @@
+/* Personel locator v1: barkod sorgusu, malzeme arama ve ortak konum kartı. */
+.material-finder .material-finder-form { grid-template-columns: minmax(0, 1fr) auto; }
+.material-finder-form .material-search-field { grid-column: 1; grid-row: 1; }
+.material-finder-form .material-search-actions { grid-column: 2; grid-row: 1; display:flex; align-items:center; gap:10px; }
+.material-finder-form .material-category-field { grid-column:1; grid-row:2; max-width:260px; }
+.material-finder-form .material-stock-filter { grid-column:2; grid-row:2; }
+.barcode-scanner-modal[hidden] { display:none!important; }
+.barcode-scanner-modal { position:fixed; inset:0; z-index:2200; display:grid; place-items:center; padding:20px; }
+.barcode-scanner-backdrop { position:absolute; inset:0; width:100%; height:100%; border:0; background:color-mix(in srgb,var(--panel-ink) 48%,transparent); backdrop-filter:blur(6px); }
+.barcode-scanner-dialog { position:relative; width:min(440px,100%); max-height:calc(100dvh - 40px); overflow:auto; padding:22px; border:1px solid var(--panel-line); border-radius:var(--panel-card-radius); background:var(--panel-surface); color:var(--panel-ink); box-shadow:var(--panel-shadow); }
+.barcode-scanner-dialog header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+.barcode-scanner-dialog h2 { margin:0; font-size:22px; }
+.barcode-scanner-dialog .barcode-camera { width:100%; margin-bottom:12px; }
+.barcode-scanner-dialog #barcodePhotoOpen { width:100%; margin-top:14px; }
+.has-barcode-scanner-modal { overflow:hidden; }
+@media(max-width:720px) {
+  .material-finder-form .material-search-field { grid-column:1/-1; grid-row:1; }
+  .material-finder-form .material-search-actions { grid-column:1/-1; grid-row:2; flex-wrap:wrap; }
+  .material-finder-form .material-category-field { grid-column:1/-1; grid-row:3; max-width:none; }
+  .material-finder-form .material-stock-filter { grid-column:1/-1; grid-row:4; }
+  .barcode-scanner-modal { padding:10px; }
+  .barcode-scanner-dialog { padding:18px; max-height:calc(100dvh - 20px); }
+}
+.personel-lookup-section {
+  min-width: 0;
+  padding: clamp(14px, 2vw, 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.barcode-workspace,
+.material-finder {
+  width: min(1120px, 100%);
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.barcode-capture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.barcode-capture-actions .ui-button {
+  min-height: 46px;
+}
+
+.barcode-capture-actions svg,
+.lookup-result-action svg,
+.material-result-action svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.barcode-camera {
+  position: relative;
+  width: min(680px, 100%);
+  aspect-ratio: 16 / 9;
+  margin: 0 0 16px;
+  border: 1px solid var(--panel-line);
+  border-radius: var(--panel-card-radius);
+  background: var(--panel-ink);
+  overflow: hidden;
+}
+
+.barcode-camera video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.barcode-camera-guide {
+  position: absolute;
+  inset: 28% 12%;
+  border: 2px solid var(--panel-surface);
+  border-radius: 14px;
+  box-shadow: 0 0 0 999px color-mix(in srgb, var(--panel-ink) 42%, transparent);
+  pointer-events: none;
+}
+
+.barcode-camera-close {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  min-height: 42px;
+  padding: 0 15px;
+  border: 1px solid var(--panel-line);
+  border-radius: 11px;
+  background: var(--panel-surface);
+  color: var(--panel-ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.barcode-query-form {
+  display: grid;
+  gap: 8px;
+}
+
+.barcode-query-form > label,
+.material-finder-form label > span {
+  color: var(--panel-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.barcode-query-form > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.barcode-query-form input,
+.material-finder-form input[type="search"],
+.material-finder-form select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  border: 1px solid var(--panel-line);
+  border-radius: 12px;
+  background: var(--panel-surface);
+  color: var(--panel-ink);
+  padding: 0 14px;
+  font: inherit;
+}
+
+.barcode-query-form input:focus-visible,
+.material-finder-form input:focus-visible,
+.material-finder-form select:focus-visible,
+.barcode-camera-close:focus-visible,
+.material-location-dialog button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--panel-primary) 30%, transparent);
+  outline-offset: 2px;
+}
+
+.lookup-message {
+  margin: 12px 0 0;
+  padding: 11px 13px;
+  border: 1px solid var(--panel-line);
+  border-radius: 11px;
+  background: var(--panel-surface-soft);
+  color: var(--panel-muted);
+  line-height: 1.45;
+}
+
+.lookup-message.is-error {
+  border-color: var(--panel-danger);
+  color: var(--panel-danger);
+}
+
+.barcode-result {
+  margin-top: 18px;
+}
+
+.lookup-empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: clamp(20px, 4vw, 34px);
+  border: 1px dashed var(--panel-line);
+  border-radius: var(--panel-card-radius);
+  background: var(--panel-surface-soft);
+}
+
+.lookup-empty-state strong {
+  color: var(--panel-ink);
+  font-size: 17px;
+}
+
+.lookup-empty-state p {
+  margin: 0;
+  color: var(--panel-muted);
+}
+
+.barcode-product-card {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  gap: clamp(18px, 3vw, 32px);
+  padding: clamp(16px, 2.5vw, 26px);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--panel-card-radius);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+}
+
+.barcode-product-media,
+.material-result-media {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  border-radius: 14px;
+  background: var(--panel-surface-soft);
+  overflow: hidden;
+}
+
+.barcode-product-media {
+  min-height: 180px;
+}
+
+.barcode-product-media img,
+.material-result-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.barcode-product-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: center;
+  gap: 14px 20px;
+  min-width: 0;
+}
+
+.barcode-product-title {
+  min-width: 0;
+}
+
+.barcode-product-title h3 {
+  margin: 0;
+  color: var(--panel-ink);
+  font-size: clamp(22px, 3vw, 34px);
+  overflow-wrap: anywhere;
+}
+
+.barcode-product-title p,
+.material-result-copy p {
+  margin: 5px 0 0;
+  color: var(--panel-muted);
+  overflow-wrap: anywhere;
+}
+
+.lookup-stock-status {
+  align-self: start;
+  justify-self: end;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: var(--panel-chip);
+  color: var(--panel-primary);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.barcode-product-card[data-stock-state="empty"] .lookup-stock-status {
+  background: var(--panel-surface-soft);
+  color: var(--panel-muted);
+}
+
+.barcode-stock-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  grid-column: 1 / -1;
+  padding: 14px 0;
+  border-block: 1px solid var(--panel-line);
+}
+
+.barcode-stock-line span {
+  color: var(--panel-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.barcode-stock-line strong {
+  color: var(--panel-ink);
+  font-size: clamp(22px, 3vw, 30px);
+  text-align: right;
+}
+
+.lookup-result-action {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  min-height: 48px;
+}
+
+.material-finder-form {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.6fr) minmax(180px, .7fr) auto auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.material-search-field,
+.material-category-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.material-stock-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 0 13px;
+  border: 1px solid var(--panel-line);
+  border-radius: 12px;
+  background: var(--panel-surface);
+  color: var(--panel-ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.material-stock-filter input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--panel-primary);
+}
+
+.material-results {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.material-results-summary {
+  margin: 0 0 2px;
+  color: var(--panel-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.material-result-row {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) minmax(130px, auto) auto;
+  align-items: center;
+  gap: 15px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--panel-line);
+  border-radius: 14px;
+  background: var(--panel-surface);
+}
+
+.material-result-media {
+  width: 82px;
+  height: 68px;
+}
+
+.material-result-copy {
+  min-width: 0;
+}
+
+.material-result-copy strong {
+  display: block;
+  color: var(--panel-ink);
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.material-result-stock {
+  min-width: 0;
+  color: var(--panel-ink);
+  font-size: 15px;
+  font-weight: 800;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.material-result-action {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.material-location-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  display: grid;
+  place-items: center;
+  padding: clamp(12px, 3vw, 28px);
+}
+
+.material-location-modal[hidden] {
+  display: none;
+}
+
+.material-location-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: color-mix(in srgb, var(--panel-ink) 48%, transparent);
+  cursor: default;
+}
+
+.material-location-dialog {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(760px, 100%);
+  max-height: min(760px, calc(100dvh - clamp(24px, 6vw, 56px)));
+  min-width: 0;
+  border: 1px solid var(--panel-line);
+  border-radius: clamp(16px, 2vw, 22px);
+  background: var(--panel-surface);
+  color: var(--panel-ink);
+  box-shadow: var(--panel-shadow);
+  overflow: hidden;
+}
+
+.material-location-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--panel-line);
+}
+
+.material-location-head > div {
+  min-width: 0;
+}
+
+.material-location-head span {
+  color: var(--panel-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.material-location-head h2 {
+  margin: 4px 0 0;
+  font-size: clamp(21px, 3vw, 30px);
+  overflow-wrap: anywhere;
+}
+
+.material-location-head p {
+  margin: 4px 0 0;
+  color: var(--panel-muted);
+  overflow-wrap: anywhere;
+}
+
+.material-location-head button {
+  display: grid;
+  flex: 0 0 44px;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--panel-line);
+  border-radius: 12px;
+  background: var(--panel-surface-soft);
+  color: var(--panel-ink);
+  cursor: pointer;
+}
+
+.material-location-head svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.material-location-scroll {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  padding: 18px 20px 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.material-location-entry {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  gap: 18px;
+  padding: 14px;
+  border: 1px solid var(--panel-line);
+  border-radius: 16px;
+  background: var(--panel-surface-soft);
+}
+
+.material-location-photo {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  border-radius: 12px;
+  background: var(--panel-surface);
+  color: var(--panel-muted);
+  overflow: hidden;
+  text-align: center;
+}
+
+.material-location-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  object-fit: contain;
+  object-position: center;
+}
+
+.material-location-photo span {
+  padding: 18px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.material-location-fields {
+  display: grid;
+  align-content: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.material-location-field {
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--panel-line);
+}
+
+.material-location-field:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.material-location-field span {
+  display: block;
+  color: var(--panel-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.material-location-field strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--panel-ink);
+  overflow-wrap: anywhere;
+}
+
+body.has-material-location-modal {
+  overflow: hidden;
+}
+
+@media (max-width: 1080px) {
+  .material-finder-form {
+    grid-template-columns: minmax(0, 1fr) minmax(170px, .7fr);
+  }
+
+  .material-stock-filter,
+  .material-finder-form > .ui-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .personel-lookup-section {
+    padding: 12px;
+  }
+
+  .barcode-capture-actions,
+  .barcode-query-form > div,
+  .material-finder-form,
+  .barcode-product-card,
+  .material-result-row,
+  .material-location-entry {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .barcode-capture-actions {
+    display: grid;
+  }
+
+  .barcode-capture-actions .ui-button,
+  .barcode-query-form .ui-button {
+    width: 100%;
+  }
+
+  .barcode-camera {
+    aspect-ratio: 4 / 3;
+  }
+
+  .barcode-product-media {
+    min-height: 200px;
+    max-height: 300px;
+  }
+
+  .barcode-product-copy {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lookup-stock-status {
+    justify-self: start;
+  }
+
+  .material-result-row {
+    align-items: stretch;
+    padding: 13px;
+  }
+
+  .material-result-media {
+    width: 100%;
+    height: 150px;
+  }
+
+  .material-result-stock {
+    text-align: left;
+  }
+
+  .material-result-action {
+    width: 100%;
+  }
+
+  .material-location-modal {
+    align-items: end;
+    padding: 8px;
+  }
+
+  .material-location-dialog {
+    max-height: calc(100dvh - 16px);
+    border-radius: 18px;
+  }
+
+  .material-location-head,
+  .material-location-scroll {
+    padding-inline: 14px;
+  }
+
+  .material-location-photo,
+  .material-location-photo img {
+    min-height: 190px;
+  }
+}
+
+@media (max-width: 390px) {
+  .barcode-stock-line {
+    display: grid;
+  }
+
+  .barcode-stock-line strong {
+    text-align: left;
+  }
+
+  .material-stock-filter {
+    white-space: normal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .material-location-modal *,
+  .barcode-camera * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}

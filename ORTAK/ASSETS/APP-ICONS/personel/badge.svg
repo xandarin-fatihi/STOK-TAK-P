@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Personel bildirim rozeti">
+  <circle cx="48" cy="30" r="18" fill="#fff"/>
+  <path d="M14 85c0-23 15-39 34-39s34 16 34 39H14Z" fill="#fff"/>
+  <path d="m34 51 14 18 14-18 6 5-5 29H33l-5-29 6-5Z" fill="#000" fill-opacity=".42"/>
+</svg>

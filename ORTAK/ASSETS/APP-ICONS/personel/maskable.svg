@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Personel maskelenebilir ikon">
+  <rect width="1024" height="1024" fill="#173b3a"/>
+  <circle cx="512" cy="365" r="112" fill="#fbf7ef"/>
+  <path d="M292 776c0-138 98-235 220-235s220 97 220 235v33H292v-33Z" fill="#fbf7ef"/>
+  <path d="m424 557 88 99 88-99 40 31-34 221H418l-34-221 40-31Z" fill="#6ec7a8"/>
+  <path d="M456 718h112" fill="none" stroke="#173b3a" stroke-width="30" stroke-linecap="round"/>
+</svg>

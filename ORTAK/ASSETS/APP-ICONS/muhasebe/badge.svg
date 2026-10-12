@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Muhasebe bildirim rozeti">
+  <path d="M22 8h39l13 13v62c0 3-2 5-5 5H22c-3 0-5-2-5-5V13c0-3 2-5 5-5Z" fill="#fff"/>
+  <path d="M61 8v13h13" fill="#000" fill-opacity=".42"/>
+  <path d="M29 36h34M29 49h34M29 62h17" fill="none" stroke="#000" stroke-opacity=".42" stroke-width="6" stroke-linecap="round"/>
+  <path d="m47 73 7 7 16-19" fill="none" stroke="#000" stroke-opacity=".42" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

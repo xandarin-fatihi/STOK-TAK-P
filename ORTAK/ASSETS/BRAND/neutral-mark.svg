@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">Uygulama işareti</title>
+  <desc id="desc">Gece laciverti zemin üzerinde sıcak krem B monogramı</desc>
+  <rect width="160" height="160" rx="38" fill="#172236"/>
+  <path d="M48 20h39c23 0 38 12 38 31 0 12-6 21-17 26 14 5 22 15 22 29 0 21-17 34-43 34H48V20Zm24 20v28h13c10 0 16-5 16-14 0-9-6-14-17-14H72Zm0 47v33h15c12 0 19-6 19-16 0-11-7-17-20-17H72Z" fill="#fbf7ef"/>
+  <path d="M101 51c10-6 21-7 31-2-2 12-10 21-22 25-7-5-10-13-9-23Z" fill="#e6b66c"/>
+  <path d="M107 67c6-7 13-12 22-15" fill="none" stroke="#172236" stroke-width="3.5" stroke-linecap="round"/>
+</svg>

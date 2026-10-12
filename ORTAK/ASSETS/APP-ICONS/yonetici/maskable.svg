@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Yönetici maskelenebilir ikon">
+  <rect width="1024" height="1024" fill="#34284f"/>
+  <path d="M512 238 718 328v151c0 136-79 230-206 284-127-54-206-148-206-284V328l206-90Z" fill="#fbf7ef"/>
+  <path d="m385 459 73-67 54 66 54-66 73 67-35 140H420l-35-140Z" fill="#e7bb70"/>
+  <path d="M434 630h156" fill="none" stroke="#34284f" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="512" cy="508" r="22" fill="#34284f"/>
+</svg>

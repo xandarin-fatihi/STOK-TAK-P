@@ -1,0 +1,39 @@
+# Dependencies and generated outputs
+node_modules/
+coverage/
+*.log
+*.tmp
+*.tsbuildinfo
+
+# Secrets: only the documented example may be committed
+.env
+.env.*
+*.env
+!LOCAL/.env.example
+*.pem
+*.key
+
+# Runtime data, uploads, documents and sessions
+/ORTAK/VERİ/
+/ORTAK/VERÄ°/
+**/writer.lock
+
+# Local backups, diagnostics and credentials-dependent manual QA helpers
+backups/
+/DENETIM/
+/LOCAL/REVISION-TEST-DATA/
+/LOCAL/test-artifacts/
+/LOCAL/revision-results*.json
+/LOCAL/CHROME-PANEL-VERIFY.js
+/LOCAL/PERSISTENT-DEMO-VERIFY.js
+/LOCAL/PERSONEL-DEMO-SEED.js
+/LOCAL/START-PERSONEL-DEMO.ps1
+/LOCAL/verify-workshop-stock.js
+*.inspect.ndjson
+
+# Editor and OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

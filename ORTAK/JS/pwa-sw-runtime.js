@@ -1,0 +1,610 @@
+function normalizeMenuSuitePwaReleaseMetadata(value) {
+  "use strict";
+  const fallbackNote = "Kararlılık ve çevrimdışı kullanım iyileştirmeleri içerir.";
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const id = String(source.id || "static-fallback")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 96) || "static-fallback";
+  const notes = [];
+
+  for (const rawNote of Array.isArray(source.notes) ? source.notes : []) {
+    let note = String(rawNote || "")
+      .replace(/[\u0000-\u001f\u007f]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!note) continue;
+    const sentenceEnd = note.search(/[.!?](?:\s|$)/);
+    if (sentenceEnd >= 0) note = note.slice(0, sentenceEnd + 1);
+    note = note.slice(0, 180).trim();
+    if (!/[.!?]$/.test(note)) note += ".";
+    if (!notes.includes(note)) notes.push(note);
+    if (notes.length === 5) break;
+  }
+
+  return Object.freeze({
+    id,
+    notes: Object.freeze(notes.length ? notes : [fallbackNote])
+  });
+}
+
+(function initialiseMenuSuiteServiceWorker(globalScope) {
+  "use strict";
+  if (globalScope.MENU_SUITE_PWA_CONFIG?.appId === "personel") return;
+
+  const config = globalScope.MENU_SUITE_PWA_CONFIG;
+  if (!config || !config.appId || !config.version || !config.offlineUrl) {
+    throw new Error("PWA service worker yapılandırması eksik.");
+  }
+
+  const cachePrefix = `menu-suite-${config.appId}-`;
+  const staticCacheName = `${cachePrefix}static-${config.version}`;
+  const offlineCacheName = `${cachePrefix}offline-${config.version}`;
+  const brandCacheName = `${cachePrefix}brand`;
+  const currentCaches = new Set([staticCacheName, offlineCacheName, brandCacheName]);
+  const staticExtensions = /\.(?:css|js|mjs|woff2?|ttf|otf|png|jpe?g|webp|gif|svg|ico)$/i;
+  const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+  const sensitivePathPattern = /(?:^|\/)(?:api|auth|login|logout|session|sessions)(?:\/|$)/i;
+
+  globalScope.addEventListener("install", (event) => {
+    event.waitUntil(precacheOfflineShell());
+  });
+
+  globalScope.addEventListener("activate", (event) => {
+    event.waitUntil((async () => {
+      const names = await caches.keys();
+      await Promise.all(names.map((name) => (
+        name.startsWith(cachePrefix) && !currentCaches.has(name)
+          ? caches.delete(name)
+          : Promise.resolve(false)
+      )));
+      await globalScope.clients.claim();
+    })());
+  });
+
+  globalScope.addEventListener("message", (event) => {
+    const data = event.data || {};
+    if (data.type === "SKIP_WAITING") {
+      globalScope.skipWaiting();
+      return;
+    }
+    if (data.type === "GET_VERSION" && event.ports && event.ports[0]) {
+      event.ports[0].postMessage({
+        appId: config.appId,
+        version: config.version,
+        release: normalizeMenuSuitePwaReleaseMetadata(globalScope.MENU_SUITE_PWA_RELEASE)
+      });
+    }
+  });
+
+  globalScope.addEventListener("fetch", (event) => {
+    const request = event.request;
+    if (!request || request.method !== "GET" || mutationMethods.has(request.method)) return;
+
+    const url = new URL(request.url);
+    if (url.origin !== globalScope.location.origin || isSensitiveRequest(request, url)) return;
+
+    if (request.mode === "navigate") {
+      if (!ownsNavigation(url.pathname)) return;
+      event.respondWith(networkFirstNavigation(request));
+      return;
+    }
+
+    if (!isStaticAsset(request, url)) return;
+    event.respondWith(cacheFirstStatic(event, request, url));
+  });
+
+  async function precacheOfflineShell() {
+    const offlineCache = await caches.open(offlineCacheName);
+    const staticCache = await caches.open(staticCacheName);
+    const offlineResources = [config.offlineUrl];
+    const staticResources = uniqueCacheResources((config.precache || []).concat(config.offlineAssets || []));
+
+    await Promise.all(offlineResources.map((path) => cacheKnownResource(offlineCache, path, true)));
+    await Promise.all(staticResources.map((path) => cacheKnownResource(staticCache, path, false)));
+  }
+
+  async function cacheKnownResource(cache, path, allowHtml) {
+    try {
+      const request = new Request(path, { cache: "reload", credentials: "same-origin" });
+      const response = await fetch(request);
+      if (!response.ok) return false;
+      if (!isSafeCacheResponse(response, { allowHtml })) return false;
+      await cache.put(canonicalCacheKey(new URL(request.url)), response.clone());
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  async function networkFirstNavigation(request) {
+    try {
+      return await fetch(request);
+    } catch (_error) {
+      const offlineCache = await caches.open(offlineCacheName);
+      return (await offlineCache.match(canonicalCacheKey(new URL(config.offlineUrl, globalScope.location.origin))))
+        || new Response("Bağlantı yok, içerik şu anda yüklenemiyor.", {
+          status: 503,
+          headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
+        });
+    }
+  }
+
+  async function cacheFirstStatic(event, request, url) {
+    if (!(await belongsToConfiguredApp(event))) return fetch(request);
+
+    const cache = await caches.open(staticCacheName);
+    const key = canonicalCacheKey(url);
+    const cached = await cache.match(key);
+    if (cached) return cached;
+
+    const response = await fetch(request);
+    if (isSafeCacheResponse(response)) {
+      await cache.put(key, response.clone());
+    }
+    return response;
+  }
+
+  function isSensitiveRequest(request, url) {
+    if (sensitivePathPattern.test(url.pathname)) return true;
+    if ((config.neverCachePrefixes || []).some((prefix) => url.pathname.startsWith(prefix))) return true;
+    if (request.headers.has("authorization") || request.headers.has("cookie")) return true;
+    return request.destination === "document" && request.mode !== "navigate";
+  }
+
+  function isStaticAsset(request, url) {
+    if (!staticExtensions.test(url.pathname)) return false;
+    if ((config.staticPrefixes || []).length
+      && !(config.staticPrefixes || []).some((prefix) => url.pathname.startsWith(prefix))) return false;
+    return ["style", "script", "font", "image", "manifest", ""].includes(request.destination);
+  }
+
+  function isSafeCacheResponse(response, options = {}) {
+    if (!response || !response.ok || !["basic", "default"].includes(response.type)) return false;
+    const cacheControl = String(response.headers.get("cache-control") || "").toLowerCase();
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    if (/(?:no-store|private)/.test(cacheControl)) return false;
+    if (response.headers.has("set-cookie") || response.headers.get("vary") === "*") return false;
+    if (/text\/event-stream|application\/json/.test(contentType)) return false;
+    if (!options.allowHtml && /text\/html/.test(contentType)) return false;
+    return true;
+  }
+
+  function ownsNavigation(pathname) {
+    if ((config.excludedNavigationPrefixes || []).some((prefix) => pathname.startsWith(prefix))) return false;
+    if (config.scopePath === "/") return pathname === "/" || pathname === "/index.html" || pathname.startsWith("/qr-menu/");
+    return pathname === config.scopePath.slice(0, -1) || pathname.startsWith(config.scopePath);
+  }
+
+  async function belongsToConfiguredApp(event) {
+    if (!event.clientId || !(config.excludedClientPrefixes || []).length) return true;
+    try {
+      const client = await globalScope.clients.get(event.clientId);
+      if (!client || !client.url) return true;
+      const pathname = new URL(client.url).pathname;
+      return !(config.excludedClientPrefixes || []).some((prefix) => pathname.startsWith(prefix));
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function canonicalCacheKey(url) {
+    return new Request(`${url.origin}${url.pathname}${url.search}`, { method: "GET", credentials: "same-origin" });
+  }
+
+  function unique(values) {
+    return Array.from(new Set(values.filter(Boolean)));
+  }
+
+  function uniqueCacheResources(values) {
+    const resources = new Map();
+    for (const value of unique(values)) {
+      try {
+        const url = new URL(value, globalScope.location.origin);
+        const key = `${url.origin}${url.pathname}${url.search}`;
+        resources.set(key, value);
+      } catch (_error) {}
+    }
+    return Array.from(resources.values());
+  }
+})(self);
+
+(function initialisePublicBrandCache(globalScope) {
+  "use strict";
+  const config = globalScope.MENU_SUITE_PWA_CONFIG;
+  if (!config || !config.appId) return;
+  const cacheName = `menu-suite-${config.appId}-brand`;
+
+  globalScope.addEventListener("message", (event) => {
+    const data = event.data || {};
+    if (data.type !== "CACHE_PUBLIC_BRAND") return;
+    event.waitUntil(replaceBrandAssets(data.urls));
+  });
+
+  globalScope.addEventListener("fetch", (event) => {
+    const request = event.request;
+    if (!request || request.method !== "GET") return;
+    const url = new URL(request.url);
+    if (url.origin !== globalScope.location.origin || !url.pathname.startsWith("/media/") || request.destination !== "image") return;
+    event.respondWith((async () => {
+      const cache = await caches.open(cacheName);
+      return (await cache.match(canonicalKey(url))) || fetch(request);
+    })());
+  });
+
+  async function replaceBrandAssets(values) {
+    const cache = await caches.open(cacheName);
+    const urls = Array.from(new Set((Array.isArray(values) ? values : []).map(safeBrandUrl).filter(Boolean)));
+    if (!urls.length) {
+      const oldKeys = await cache.keys();
+      await Promise.all(oldKeys.map((request) => cache.delete(request)));
+      return;
+    }
+    const fetched = await Promise.all(urls.map(async (url) => {
+      try {
+        const response = await fetch(new Request(url, { credentials: "same-origin", cache: "reload" }));
+        const type = String(response.headers.get("content-type") || "").toLowerCase();
+        if (response.ok && type.startsWith("image/") && !response.headers.has("set-cookie")) {
+          return { key: canonicalKey(new URL(url, globalScope.location.origin)), response: response.clone() };
+        }
+      } catch (_error) {}
+      return null;
+    }));
+    if (fetched.some((item) => !item)) return;
+    const oldKeys = await cache.keys();
+    await Promise.all(oldKeys.map((request) => cache.delete(request)));
+    await Promise.all(fetched.map((item) => cache.put(item.key, item.response)));
+  }
+
+  function safeBrandUrl(value) {
+    try {
+      const url = new URL(String(value || ""), globalScope.location.origin);
+      if (url.origin !== globalScope.location.origin || !(url.pathname.startsWith("/media/") || url.pathname.startsWith("/assets/"))) return "";
+      return `${url.pathname}${url.search}`;
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function canonicalKey(url) {
+    return new Request(`${url.origin}${url.pathname}${url.search}`, { method: "GET", credentials: "same-origin" });
+  }
+})(self);
+
+
+(function initialiseMenuSuiteServiceWorker(globalScope) {
+  "use strict";
+  if (globalScope.MENU_SUITE_PWA_CONFIG?.appId !== "personel") return;
+
+  const config = globalScope.MENU_SUITE_PWA_CONFIG;
+  if (!config || !config.appId || !config.version || !config.offlineUrl) {
+    throw new Error("PWA service worker yapılandırması eksik.");
+  }
+
+  const cachePrefix = `menu-suite-${config.appId}-`;
+  const staticCacheName = `${cachePrefix}static-${config.version}`;
+  const offlineCacheName = `${cachePrefix}offline-${config.version}`;
+  const brandCacheName = `${cachePrefix}brand`;
+  const currentCaches = new Set([staticCacheName, offlineCacheName, brandCacheName]);
+  const staticExtensions = /\.(?:css|js|mjs|woff2?|ttf|otf|png|jpe?g|webp|gif|svg|ico)$/i;
+  const localNetworkFirstExtensions = /\.(?:css|js|mjs)$/i;
+  const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+  const sensitivePathPattern = /(?:^|\/)(?:api|auth|login|logout|session|sessions)(?:\/|$)/i;
+  const isLocalhostDevelopment = isLocalHostname(globalScope.location.hostname);
+
+  globalScope.addEventListener("install", (event) => {
+    event.waitUntil(precacheOfflineShell());
+  });
+
+  globalScope.addEventListener("activate", (event) => {
+    event.waitUntil((async () => {
+      const names = await caches.keys();
+      await Promise.all(names.map((name) => (
+        name.startsWith(cachePrefix) && !currentCaches.has(name)
+          ? caches.delete(name)
+          : Promise.resolve(false)
+      )));
+      await globalScope.clients.claim();
+    })());
+  });
+
+  globalScope.addEventListener("message", (event) => {
+    const data = event.data || {};
+    if (data.type === "SKIP_WAITING") {
+      globalScope.skipWaiting();
+      return;
+    }
+    if (data.type === "GET_VERSION" && event.ports && event.ports[0]) {
+      event.ports[0].postMessage({
+        appId: config.appId,
+        version: config.version,
+        release: normalizeMenuSuitePwaReleaseMetadata(globalScope.MENU_SUITE_PWA_RELEASE)
+      });
+    }
+  });
+
+  globalScope.addEventListener("fetch", (event) => {
+    const request = event.request;
+    if (!request || request.method !== "GET" || mutationMethods.has(request.method)) return;
+
+    const url = new URL(request.url);
+    if (url.origin !== globalScope.location.origin || isSensitiveRequest(request, url)) return;
+
+    if (request.mode === "navigate") {
+      if (!ownsNavigation(url.pathname)) return;
+      event.respondWith(networkFirstNavigation(request));
+      return;
+    }
+
+    if (!isStaticAsset(request, url)) return;
+    event.respondWith(isLocalhostDevelopment && localNetworkFirstExtensions.test(url.pathname)
+      ? networkFirstStatic(event, request, url)
+      : cacheFirstStatic(event, request, url));
+  });
+
+  globalScope.addEventListener("push", (event) => {
+    event.waitUntil(showPushNotification(event));
+  });
+
+  globalScope.addEventListener("notificationclick", (event) => {
+    event.notification.close();
+    event.waitUntil(openNotificationTarget(event.notification && event.notification.data));
+  });
+
+  async function precacheOfflineShell() {
+    const offlineCache = await caches.open(offlineCacheName);
+    const staticCache = await caches.open(staticCacheName);
+    const offlineResources = [config.offlineUrl];
+    const staticResources = uniqueCacheResources((config.precache || []).concat(config.offlineAssets || []));
+
+    await Promise.all(offlineResources.map((path) => cacheKnownResource(offlineCache, path, true)));
+    await Promise.all(staticResources.map((path) => cacheKnownResource(staticCache, path, false)));
+  }
+
+  async function cacheKnownResource(cache, path, allowHtml) {
+    try {
+      const request = new Request(path, { cache: "reload", credentials: "same-origin" });
+      const response = await fetch(request);
+      if (!response.ok) return false;
+      if (!isSafeCacheResponse(response, { allowHtml })) return false;
+      await cache.put(canonicalCacheKey(new URL(request.url)), response.clone());
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  async function networkFirstNavigation(request) {
+    try {
+      return await fetch(request);
+    } catch (_error) {
+      const offlineCache = await caches.open(offlineCacheName);
+      return (await offlineCache.match(canonicalCacheKey(new URL(config.offlineUrl, globalScope.location.origin))))
+        || new Response("Bağlantı yok, içerik şu anda yüklenemiyor.", {
+          status: 503,
+          headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
+        });
+    }
+  }
+
+  async function cacheFirstStatic(event, request, url) {
+    if (!(await belongsToConfiguredApp(event))) return fetch(request);
+
+    const cache = await caches.open(staticCacheName);
+    const key = canonicalCacheKey(url);
+    const cached = await cache.match(key);
+    if (cached) return cached;
+
+    const response = await fetch(request);
+    if (isSafeCacheResponse(response)) {
+      await cache.put(key, response.clone());
+    }
+    return response;
+  }
+
+  async function networkFirstStatic(event, request, url) {
+    if (!(await belongsToConfiguredApp(event))) return fetch(request);
+
+    const cache = await caches.open(staticCacheName);
+    const key = canonicalCacheKey(url);
+    try {
+      const response = await fetch(new Request(request, { cache: "no-store" }));
+      if (isSafeCacheResponse(response)) await cache.put(key, response.clone());
+      return response;
+    } catch (error) {
+      const cached = await cache.match(key);
+      if (cached) return cached;
+      throw error;
+    }
+  }
+
+  function isSensitiveRequest(request, url) {
+    if (sensitivePathPattern.test(url.pathname)) return true;
+    if ((config.neverCachePrefixes || []).some((prefix) => url.pathname.startsWith(prefix))) return true;
+    if (request.headers.has("authorization") || request.headers.has("cookie")) return true;
+    if (String(request.headers.get("accept") || "").toLowerCase().includes("text/event-stream")) return true;
+    return request.destination === "document" && request.mode !== "navigate";
+  }
+
+  function isStaticAsset(request, url) {
+    if (!staticExtensions.test(url.pathname)) return false;
+    if ((config.staticPrefixes || []).length
+      && !(config.staticPrefixes || []).some((prefix) => url.pathname.startsWith(prefix))) return false;
+    return ["style", "script", "font", "image", "manifest", ""].includes(request.destination);
+  }
+
+  function isSafeCacheResponse(response, options = {}) {
+    if (!response || !response.ok || !["basic", "default"].includes(response.type)) return false;
+    const cacheControl = String(response.headers.get("cache-control") || "").toLowerCase();
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    if (/(?:no-store|private)/.test(cacheControl)) return false;
+    if (response.headers.has("set-cookie") || response.headers.get("vary") === "*") return false;
+    if (/text\/event-stream|application\/json/.test(contentType)) return false;
+    if (!options.allowHtml && /text\/html/.test(contentType)) return false;
+    return true;
+  }
+
+  function ownsNavigation(pathname) {
+    if ((config.excludedNavigationPrefixes || []).some((prefix) => pathname.startsWith(prefix))) return false;
+    if (config.scopePath === "/") return pathname === "/" || pathname === "/index.html" || pathname.startsWith("/qr-menu/");
+    return pathname === config.scopePath.slice(0, -1) || pathname.startsWith(config.scopePath);
+  }
+
+  async function belongsToConfiguredApp(event) {
+    if (!event.clientId || !(config.excludedClientPrefixes || []).length) return true;
+    try {
+      const client = await globalScope.clients.get(event.clientId);
+      if (!client || !client.url) return true;
+      const pathname = new URL(client.url).pathname;
+      return !(config.excludedClientPrefixes || []).some((prefix) => pathname.startsWith(prefix));
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function canonicalCacheKey(url) {
+    return new Request(`${url.origin}${url.pathname}${url.search}`, { method: "GET", credentials: "same-origin" });
+  }
+
+  function isLocalHostname(value) {
+    const hostname = String(value || "").toLowerCase();
+    return hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+  }
+
+  function unique(values) {
+    return Array.from(new Set(values.filter(Boolean)));
+  }
+
+  function uniqueCacheResources(values) {
+    const resources = new Map();
+    for (const value of unique(values)) {
+      try {
+        const url = new URL(value, globalScope.location.origin);
+        const key = `${url.origin}${url.pathname}${url.search}`;
+        resources.set(key, value);
+      } catch (_error) {}
+    }
+    return Array.from(resources.values());
+  }
+
+  async function showPushNotification(event) {
+    const payload = readPushPayload(event);
+    const source = payload.notification && typeof payload.notification === "object" ? payload.notification : payload;
+    const sourceData = source.data && typeof source.data === "object" ? source.data : {};
+    const deepLink = safeDeepLink(source.deepLink || sourceData.deepLink);
+    const unreadCount = Math.max(0, Math.trunc(Number(source.unreadCount ?? sourceData.unreadCount ?? 0)));
+    const vibrationEnabled = source.vibrationEnabled !== false && sourceData.vibrationEnabled !== false;
+    const vibration = vibrationEnabled ? normalizeVibration(source.vibrate || sourceData.vibrate) : [];
+    const foregroundClient = vibration.length ? await findForegroundAppClient() : null;
+    const foregroundVibrated = foregroundClient ? await requestForegroundVibration(foregroundClient, vibration) : false;
+    const notificationOptions = {
+      body: String(source.body || "Yeni bir bildiriminiz var.").slice(0, 240),
+      icon: source.icon || sourceData.icon || config.icon || `/assets/app-icons/${config.appId}/icon-192.png`,
+      badge: source.badge || sourceData.badge || config.badge || `/assets/app-icons/${config.appId}/icon-192.png`,
+      tag: source.id ? `menu-suite-${config.appId}-${String(source.id).slice(0, 100)}` : undefined,
+      renotify: source.renotify === true,
+      requireInteraction: source.requireInteraction === true,
+      data: { ...sourceData, deepLink, appTarget: config.appId }
+    };
+    if (!foregroundVibrated && vibration.length) notificationOptions.vibrate = vibration;
+    await globalScope.registration.showNotification(String(source.title || config.notificationTitle || "Bildirim").slice(0, 120), notificationOptions);
+    if (unreadCount && typeof globalScope.registration.setAppBadge === "function") {
+      await globalScope.registration.setAppBadge(unreadCount).catch(() => {});
+    }
+  }
+
+  function readPushPayload(event) {
+    if (!event || !event.data) return {};
+    try { return event.data.json() || {}; } catch (_error) {
+      try { return { body: event.data.text() }; } catch (_textError) { return {}; }
+    }
+  }
+
+  function normalizeVibration(value) {
+    if (!Array.isArray(value)) return [];
+    const pattern = [];
+    let total = 0;
+    for (const item of value.slice(0, 12)) {
+      const duration = Number(item);
+      if (!Number.isFinite(duration) || duration <= 0) continue;
+      const safeDuration = Math.min(2000, Math.round(duration));
+      if (total + safeDuration > 8000) break;
+      pattern.push(safeDuration);
+      total += safeDuration;
+    }
+    return pattern;
+  }
+
+  async function findForegroundAppClient() {
+    const windows = await globalScope.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const visible = windows.filter((client) => {
+      try {
+        const pathname = new URL(client.url).pathname;
+        return pathBelongsToRoot(pathname, config.scopePath) && (client.visibilityState === "visible" || client.focused === true);
+      } catch (_error) {
+        return false;
+      }
+    });
+    return visible.find((client) => client.focused === true) || visible[0] || null;
+  }
+
+  function requestForegroundVibration(client, pattern) {
+    return new Promise((resolve) => {
+      if (!client || typeof client.postMessage !== "function" || typeof MessageChannel !== "function") return resolve(false);
+      const channel = new MessageChannel();
+      let settled = false;
+      const finish = (handled) => {
+        if (settled) return;
+        settled = true;
+        resolve(handled === true);
+      };
+      channel.port1.onmessage = (event) => finish(Boolean(event.data && event.data.handled));
+      try {
+        client.postMessage({ type: "MENU_SUITE_PUSH_VIBRATE", pattern }, [channel.port2]);
+      } catch (_error) {
+        finish(false);
+        return;
+      }
+      setTimeout(() => finish(false), 250);
+    });
+  }
+
+  function safeDeepLink(value) {
+    const fallback = String(config.fallbackRoot || config.scopePath || "/");
+    const allowedRoots = unique((config.allowedRoots || [fallback]).map((root) => String(root || "")).filter(Boolean));
+    try {
+      const url = new URL(String(value || fallback), globalScope.location.origin);
+      if (url.origin !== globalScope.location.origin || !allowedRoots.some((root) => pathBelongsToRoot(url.pathname, root))) return fallback;
+      return `${url.pathname}${url.search}${url.hash}`;
+    } catch (_error) {
+      return fallback;
+    }
+  }
+
+  function pathBelongsToRoot(pathname, root) {
+    const normalized = root === "/" ? "/" : `/${String(root).replace(/^\/+|\/+$/g, "")}/`;
+    if (normalized === "/") return pathname === "/" || pathname === "/index.html" || pathname.startsWith("/qr-menu/");
+    const bare = normalized.slice(0, -1);
+    return pathname === bare || pathname.startsWith(normalized);
+  }
+
+  async function openNotificationTarget(data) {
+    const target = safeDeepLink(data && data.deepLink);
+    const targetPath = new URL(target, globalScope.location.origin).pathname;
+    const windows = await globalScope.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const existing = windows.find((client) => {
+      try { return pathBelongsToRoot(new URL(client.url).pathname, targetPath.split("/").slice(0, 2).join("/") || "/"); } catch (_error) { return false; }
+    });
+    if (existing) {
+      if ("navigate" in existing) await existing.navigate(target).catch(() => null);
+      await existing.focus();
+    } else {
+      await globalScope.clients.openWindow(target);
+    }
+    if (typeof globalScope.registration.clearAppBadge === "function") {
+      await globalScope.registration.clearAppBadge().catch(() => {});
+    }
+  }
+})(self);

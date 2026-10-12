@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Görsel bulunmuyor">
+  <rect width="800" height="600" fill="#ece8e3"/>
+  <rect x="238" y="152" width="324" height="296" rx="42" fill="#f8f6f2" stroke="#bbb4ab" stroke-width="8"/>
+  <circle cx="340" cy="258" r="34" fill="#bbb4ab"/>
+  <path d="M282 390 370 302l62 62 42-42 66 68H282Z" fill="#777f8a"/>
+</svg>

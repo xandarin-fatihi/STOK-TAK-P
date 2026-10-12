@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#574867">
+  <title>Yönetici Paneli — Çevrimdışı</title>
+  <link rel="stylesheet" href="/shared/styles/pwa-ui.css">
+  <link rel="stylesheet" href="/shared/styles/brand-identity.css?v=20260919-neutral-brand">
+</head>
+<body data-pwa-offline-page>
+  <main class="pwa-offline-card">
+    <img src="/assets/app-icons/yonetici/master.svg" alt="Yönetici uygulama simgesi" data-brand-logo data-brand-logo-kind="offline">
+    <h1>Bağlantı yok</h1>
+    <p>Yönetici verileri güncellenemiyor. Yayınlama, Excel aktarımı ve diğer yazma işlemleri bağlantı kurulmadan tamamlanmış sayılmaz.</p>
+    <a href="/yonetici/">Tekrar Dene</a>
+  </main>
+  <script src="/shared/scripts/brand-identity.js?v=20260929-role-brand-v1"></script>
+  <script>(window.BrandIdentity)?.load({ logoSelector: "[data-brand-logo]", kind: "offline", appId: "yonetici", fallbackName: "Yönetici Paneli" });</script>
+</body>
+</html>

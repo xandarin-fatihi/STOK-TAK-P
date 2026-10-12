@@ -1,0 +1,181 @@
+/* Personel profil alanının geniş ekran ve mobil yerleşimi. */
+.personel-dashboard[data-active-section="profile"] .profile-section {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  align-content: start;
+  gap: var(--panel-gap);
+  padding: clamp(10px, 1.25vw, 20px);
+  overflow-x: clip;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(16px, 1.5vw, 24px);
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  padding: clamp(15px, 1.45vw, 24px);
+  border-radius: var(--panel-card-radius);
+  box-shadow: var(--panel-shadow);
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card > *,
+.personel-dashboard[data-active-section="profile"] .profile-details-column,
+.personel-dashboard[data-active-section="profile"] .profile-card label,
+.personel-dashboard[data-active-section="profile"] #profileAppearance {
+  min-width: 0;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-details-column {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-hero {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-hero > div:last-child {
+  min-width: 0;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card :is(input, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card input[type="file"] {
+  padding: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card input[type="file"]::file-selector-button {
+  max-width: min(180px, 48%);
+  margin-right: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card .profile-appearance-section {
+  min-width: 0;
+  margin: 0;
+  padding: clamp(15px, 1.35vw, 22px);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--panel-card-radius);
+  background: color-mix(in srgb, var(--panel-surface-soft) 72%, var(--panel-surface));
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card .profile-appearance-section > p {
+  max-width: 68ch;
+  margin-top: 4px;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card .profile-appearance-section h4 {
+  margin: 18px 0 10px;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card .appearance-mode-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card .appearance-mode-picker button {
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card .appearance-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 12px;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card .appearance-preset-card,
+.personel-dashboard[data-active-section="profile"] .profile-card .appearance-swatches {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-card .appearance-preset-card strong {
+  overflow-wrap: anywhere;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-actions {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin-top: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--panel-line);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-actions span {
+  min-width: 0;
+  margin-right: auto;
+  overflow-wrap: anywhere;
+  order: -1;
+}
+
+.personel-dashboard[data-active-section="profile"] .profile-section > :is(.account-security-card, .notification-preferences-card) {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+@media (min-width: 1180px) {
+  .personel-dashboard[data-active-section="profile"] .profile-card {
+    grid-template-columns: minmax(320px, .78fr) minmax(500px, 1.22fr);
+    align-items: start;
+    column-gap: clamp(20px, 2vw, 34px);
+  }
+
+  .personel-dashboard[data-active-section="profile"] #profileBio {
+    min-height: clamp(170px, 16vw, 220px);
+    max-height: 320px;
+  }
+}
+
+@media (max-width: 760px) {
+  .personel-dashboard[data-active-section="profile"] .profile-section {
+    padding: 10px;
+  }
+
+  .personel-dashboard[data-active-section="profile"] .profile-card {
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .personel-dashboard[data-active-section="profile"] .profile-card .profile-appearance-section {
+    padding: 14px;
+  }
+
+  .personel-dashboard[data-active-section="profile"] .profile-card .appearance-preset-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 135px), 1fr));
+    gap: 10px;
+  }
+}
+
+@media (max-width: 540px) {
+  .personel-dashboard[data-active-section="profile"] .profile-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .personel-dashboard[data-active-section="profile"] .profile-actions :is(button, span) {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+  }
+}

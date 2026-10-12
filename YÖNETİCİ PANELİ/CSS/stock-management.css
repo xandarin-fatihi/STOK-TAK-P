@@ -1,0 +1,108 @@
+.stock-admin-module {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.stock-admin-module > header { display: none; }
+.stock-admin-module > header h2 {
+  margin: 5px 0 0;
+  color: var(--panel-ink);
+  font-size: clamp(24px, 3vw, 38px);
+  line-height: 1.15;
+}
+.stock-admin-module > header > p:last-child {
+  margin: 10px 0 0;
+  color: var(--panel-muted);
+  line-height: 1.65;
+}
+
+.stock-admin-module__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 14px;
+  margin-top: 0;
+}
+
+.stock-admin-module__grid article {
+  min-width: 0;
+  min-height: 142px;
+  padding: 18px;
+  border: 1px solid var(--panel-line);
+  border-radius: calc(var(--panel-card-radius) - 2px);
+  background: var(--panel-surface-soft);
+}
+.stock-admin-module__grid span {
+  display: inline-flex;
+  min-height: 25px;
+  align-items: center;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--panel-chip);
+  color: var(--panel-primary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.stock-admin-module__grid strong,
+.stock-admin-module__grid small { display: block; overflow-wrap: anywhere; }
+.stock-admin-module__grid strong { margin-top: 15px; color: var(--panel-ink); font-size: 15px; }
+.stock-admin-module__grid small { margin-top: 7px; color: var(--panel-muted); line-height: 1.55; }
+
+/* Özet kartları her satırda aynı ölçüde kalır; son kart tek başına sarkmaz. */
+.overview-summary-card.is-secondary {
+  min-height: 108px;
+  padding: 16px;
+}
+
+@media (min-width: 1401px) {
+  .overview-summary-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+@media (min-width: 761px) and (max-width: 1400px) {
+  .overview-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 680px) {
+  .stock-admin-module { padding: 0; }
+  .stock-admin-module__grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .overview-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview-summary-card.is-secondary { min-height: 94px; }
+}
+
+@media (max-width: 480px) {
+  .overview-summary-grid { grid-template-columns: 1fr; }
+  .overview-summary-card.is-secondary { min-height: 78px; }
+}
+
+/* Global workspace title is authoritative; remove the duplicated Users title
+   and the large accordion shell while retaining the actual form/list panels. */
+.admin-shell[data-active-section="staffAccess"] .staff-page-head {
+  display: none;
+}
+
+.admin-shell[data-active-section="staffAccess"] .staff-accordion {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.admin-shell[data-active-section="staffAccess"] .staff-accordion-head {
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--panel-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.admin-shell[data-active-section="staffAccess"] .staff-accordion-body {
+  padding: 14px 0 0;
+}

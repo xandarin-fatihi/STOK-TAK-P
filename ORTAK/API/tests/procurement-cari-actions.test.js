@@ -1,0 +1,229 @@
+"use strict";
+const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+const { createFileStore } = require("../src/store/file-store");
+const { createProcurementService } = require("../src/procurement-service");
+const { createProcurementDocumentService } = require("../src/procurement-documents");
+const { createProcurementImageProcessor } = require("../src/procurement-image-processor");
+const stockService = require("../src/stock-service");
+const ADMIN = { type: "admin", id: "admin", name: "Yönetici", branchId: "main", capabilities: [] };
+
+async function setup(context) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "tahmisci-cari-actions-"));
+  const store = createFileStore(path.join(root, "test-store.json"), { enableEventLoopMetrics: false, bcryptRounds: 4, defaultPanelPassword: require("node:crypto").randomUUID() });
+  context.after(async () => { await store.close(); await fs.rm(root, { recursive: true, force: true }); });
+  await store.ensure();
+  const service = createProcurementService({ store });
+  const documents = createProcurementDocumentService({ documentsDir: path.join(root, "documents"), imageProcessor: createProcurementImageProcessor(), strictImageProcessing: true });
+  let sequence = 0;
+  const mutate = async (method, ...args) => service[method](ADMIN, ...args, { expectedRevision: (await service.context(ADMIN)).revision, requestId: `cari-regression-${++sequence}` });
+  const supplier = (await mutate("createSupplier", { name: "Cari Senaryo A" })).supplier;
+  const product = (await mutate("createSupplierIndependentProduct", supplier.id, { name: "Regresyon Kahve", bulkUnit: "paket", purchaseUnit: "paket", baseUnit: "kg", conversionFactor: 1, newStockProduct: { name: "Regresyon Kahve", bulkUnit: "paket", baseUnit: "kg", unitsPerBulkUnit: 1 } })).independentProduct;
+  const shipment = async (totalKurus = 50000) => {
+    const location = (await store.read()).stockState.locations[0];
+    const created = await mutate("createShipment", { supplierId: supplier.id, destinationLocationId: location.id, shipmentDate: "2026-09-05", items: [{ supplierProductId: product.id, stockProductId: product.stockProductId, quantity: 1, quantityBulk: 1, unit: "paket", purchaseUnit: "paket", bulkUnit: "paket", totalKurus, unitPriceKurus: totalKurus }] });
+    return (await mutate("submitShipment", created.shipment.id, {})).shipment;
+  };
+  const document = async () => {
+    const pdf = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n");
+    const physical = await documents.storeUpload({ buffer: pdf, originalName: "test-payment.pdf", declaredMimeType: "application/pdf" });
+    const result = await mutate("recordDocument", { documentType: "diğer", supplierId: supplier.id }, physical);
+    documents.commitUpload(physical);
+    return result.document;
+  };
+  const totals = async () => { const value = await service.listLedger(ADMIN, { supplierId: supplier.id }); return [value.debtKurus, value.paymentKurus, value.remainingKurus]; };
+  return { store, service, mutate, supplier, product, shipment, document, totals };
+}
+
+test("shipment mixed quantity: bulk/base/mixed snapshots, legacy, validation and actual stock approval", async (context) => {
+  const f = await setup(context);
+  await f.store.update(data => {
+    Object.assign(data.procurement.supplierIndependentProducts.find(p => p.id === f.product.id), { bulkUnit: "koli", purchaseUnit: "koli", baseUnit: "adet", conversionFactor: 6 });
+    Object.assign(data.stockState.products.find(p => p.id === f.product.stockProductId), { unit: "adet", baseUnit: "adet", bulkUnit: "koli", caseUnit: "koli", unitsPerBulkUnit: 6, unitsPerCase: 6 });
+  });
+  const express = require("express");
+  const { registerWorkforceRoutes } = require("../src/workforce-routes");
+  const { normalizeStockState } = require("../src/store/migrations");
+  const pass = (req, res, next) => next();
+  const workforce = registerWorkforceRoutes({ app: express(), store: f.store, crypto: require("node:crypto"), normalizeStockState,
+    auth: { requireAdmin: pass, requirePersonelOrPreview: pass, requireActivePersonel: pass, requirePersonelSection: () => pass },
+    requireAdminRequestOrigin: pass, requireAdminOrMainRequestOrigin: pass, broadcastStockUpdate: () => {} });
+  const locationId = (await f.store.read()).stockState.locations[0].id;
+  const input = quantities => ({ supplierId: f.supplier.id, destinationLocationId: locationId, items: [{ supplierProductId: f.product.id,
+    stockProductId: f.product.stockProductId, purchaseUnit: "koli", bulkUnit: "sahte", baseUnit: "sahte", conversionFactor: 999, totalKurus: 150000, ...quantities }] });
+  const startingBalance = stockService.getProductBalance((await f.store.read()).stockState, locationId, f.product.stockProductId).quantity;
+  let appliedTotal = 0;
+  for (const [quantityBulk, quantityBase, expected] of [[2, 0, 12], [0, 3, 3], [2, 3, 15]]) {
+    const created = await f.mutate("createShipment", input({ quantityBulk, quantityBase }));
+    const line = created.shipment.items[0];
+    assert.equal(line.quantityBulk, quantityBulk);
+    assert.equal(line.quantityBase, quantityBase);
+    assert.equal(line.baseQuantity, expected);
+    assert.equal(line.conversionFactor, 6);
+    assert.equal(line.bulkUnitSnapshot, "koli");
+    assert.equal(line.baseUnitSnapshot, "adet");
+    assert.equal(line.totalKurus, 150000);
+    assert.equal(line.baseUnitPriceKurus, Math.round(150000 / expected));
+    assert.equal(line.bulkUnitPriceKurus, Math.round(150000 / expected * 6));
+    const submitted = await f.mutate("submitShipment", created.shipment.id, {});
+    const request = { shipmentId: created.shipment.id, actor: ADMIN, requestId: `mixed-approval-${expected}`,
+      expectedRevision: submitted.workforceRevision, procurementExpectedRevision: submitted.revision, destinationLocationId: locationId };
+    await workforce.approveWorkforceShipment(request);
+    assert.equal((await workforce.approveWorkforceShipment(request)).idempotent, true);
+    const current = await f.store.read();
+    const movements = current.stockState.movements.filter(m => m.shipmentId === created.shipment.id);
+    assert.equal(movements.length, 1);
+    assert.equal(movements[0].quantity, expected);
+    appliedTotal += expected;
+    assert.equal(stockService.getProductBalance(current.stockState, locationId, f.product.stockProductId).quantity, startingBalance + appliedTotal);
+    await f.mutate("accountShipmentAfterStock", created.shipment.id, {});
+  }
+  assert.deepEqual(await f.totals(), [450000, 0, 450000]);
+  for (const quantities of [{ quantityBulk: 2 }, { quantity: 2, unit: "koli" }]) {
+    assert.equal((await f.mutate("createShipment", input(quantities))).shipment.items[0].baseQuantity, 12);
+  }
+  assert.equal((await f.mutate("createShipment", input({ quantity: 3, unit: "adet", purchaseUnit: "adet" }))).shipment.items[0].baseQuantity, 3);
+  for (const quantities of [{ quantityBulk: 0, quantityBase: 0 }, { quantityBulk: -1, quantityBase: 3 }, { quantityBulk: 1, quantityBase: -3 }, { quantityBase: "invalid" }]) {
+    await assert.rejects(f.mutate("createShipment", input(quantities)), error => error.status === 400);
+  }
+  const configureUnits = async (bulkUnit, baseUnit, conversionFactor) => f.store.update(data => {
+    Object.assign(data.procurement.supplierIndependentProducts.find(p => p.id === f.product.id), { bulkUnit, purchaseUnit: bulkUnit, baseUnit, conversionFactor });
+    Object.assign(data.stockState.products.find(p => p.id === f.product.stockProductId), {
+      unit: baseUnit, baseUnit, bulkUnit, caseUnit: bulkUnit, unitsPerBulkUnit: conversionFactor, unitsPerCase: conversionFactor
+    });
+  });
+  const approveAndAssertMovement = async (created, expectedQuantity, suffix) => {
+    const submitted = await f.mutate("submitShipment", created.shipment.id, {});
+    await workforce.approveWorkforceShipment({ shipmentId: created.shipment.id, actor: ADMIN, requestId: `mixed-regression-${suffix}`,
+      expectedRevision: submitted.workforceRevision, procurementExpectedRevision: submitted.revision, destinationLocationId: locationId });
+    const movement = (await f.store.read()).stockState.movements.find(item => item.shipmentId === created.shipment.id);
+    assert.equal(movement.quantity, expectedQuantity);
+  };
+
+  await configureUnits("kasa", "kg", 10);
+  const scenarioA = await f.mutate("createShipment", input({ quantityBulk: 1, quantityBase: 3, totalKurus: 130000 }));
+  assert.equal(scenarioA.shipment.items[0].baseQuantity, 13);
+  assert.equal(scenarioA.shipment.items[0].totalKurus, 130000);
+  await approveAndAssertMovement(scenarioA, 13, "kasa-10");
+
+  await configureUnits("kasa", "kg", 15);
+  const scenarioB = await f.mutate("createShipment", input({ quantityBulk: 1, quantityBase: 1, totalKurus: undefined, unitPriceKurus: 150000 }));
+  assert.equal(scenarioB.shipment.items[0].baseQuantity, 16);
+  assert.equal(scenarioB.shipment.items[0].quantity, 1.067);
+  assert.equal(scenarioB.shipment.items[0].totalKurus, 160000);
+
+  await configureUnits("koli", "adet", 24);
+  const scenarioC = await f.mutate("createShipment", input({ quantityBulk: 1, quantityBase: 1, totalKurus: 250000 }));
+  assert.equal(scenarioC.shipment.items[0].baseQuantity, 25);
+  await approveAndAssertMovement(scenarioC, 25, "koli-24");
+
+  await configureUnits("kasa", "kg", 15);
+  const scenarioD = await f.mutate("createShipment", input({ quantityBulk: 0, quantityBase: 1, totalKurus: 10000 }));
+  assert.equal(scenarioD.shipment.items[0].baseQuantity, 1);
+  await approveAndAssertMovement(scenarioD, 1, "base-only");
+
+  const scenarioE = await f.mutate("createShipment", input({ quantity: 2, unit: "kasa", purchaseUnit: "kasa" }));
+  assert.equal(scenarioE.shipment.items[0].quantity, 2);
+  assert.equal(scenarioE.shipment.items[0].baseQuantity, 30);
+
+  await configureUnits("", "adet", 0);
+  const single = (await f.mutate("createShipment", input({ quantityBulk: 0, quantityBase: 50 }))).shipment.items[0];
+  assert.equal(single.baseQuantity, 50);
+  assert.equal(single.bulkUnitSnapshot, "");
+  assert.equal(single.purchaseUnitSnapshot, "adet");
+  await assert.rejects(f.mutate("createShipment", input({ quantityBulk: 1, quantityBase: 0 })), error => error.code === "SHIPMENT_BULK_UNIT_REQUIRED");
+});
+
+test("cari actions: opening/payment/no-stock scenario, no/no, legacy, idempotency and permission", async (context) => {
+  const f = await setup(context);
+  await f.mutate("createLedgerEntry", { supplierId: f.supplier.id, type: "opening_balance", amountKurus: -200000, transactionDate: "2026-09-05" });
+  assert.deepEqual(await f.totals(), [200000, 0, 200000]);
+  const document = await f.document();
+  await f.mutate("createPayment", { supplierId: f.supplier.id, amountKurus: 75000, paymentDate: "2026-09-05", documentId: document.id });
+  assert.deepEqual(await f.totals(), [200000, 75000, 125000]);
+  const shipment = await f.shipment();
+  const before = JSON.stringify((await f.store.read()).stockState);
+  await f.mutate("declineShipmentStock", shipment.id, {});
+  assert.deepEqual(await f.totals(), [200000, 75000, 125000], "stock NO/cari NO has no debt");
+  const posted = await f.mutate("accountShipmentWithoutStock", shipment.id, {});
+  assert.equal(posted.shipment.accountingSource, "stock_declined_override");
+  assert.deepEqual(await f.totals(), [250000, 75000, 175000]);
+  await f.mutate("accountShipmentWithoutStock", shipment.id, {});
+  assert.deepEqual(await f.totals(), [250000, 75000, 175000]);
+  assert.equal(JSON.stringify((await f.store.read()).stockState), before, "no stock mutation");
+  const legacy = await f.shipment(10000);
+  await f.mutate("declineShipmentStock", legacy.id, {});
+  await f.store.update((data) => { const row = data.workforceShipments.find((item) => item.id === legacy.id); row.stockDecision = ""; });
+  assert.equal((await f.service.getShipment(ADMIN, legacy.id)).shipment.canAccountWithoutStock, true);
+  await f.mutate("accountShipmentWithoutStock", legacy.id, {});
+  assert.deepEqual(await f.totals(), [260000, 75000, 185000]);
+  await f.mutate("reverseShipmentAccounting", legacy.id, { reason: "Test reversal" });
+  await assert.rejects(f.mutate("accountShipmentWithoutStock", legacy.id, {}), error => error.code === "ACCOUNTING_ALREADY_REVERSED");
+  await assert.rejects(f.service.accountShipmentWithoutStock({ type: "personel", id: "read-only", branchId: "main", capabilities: ["receipt.approve"] }, shipment.id, {}, { expectedRevision: 0, requestId: "unauthorized-cari" }), error => error.status === 403);
+  await assert.rejects(f.mutate("createPayment", { supplierId: f.supplier.id, amountKurus: 1, paymentDate: "2026-09-05" }), error => error.code === "PAYMENT_DOCUMENT_REQUIRED");
+});
+
+test("cari actions: manual/opening/shipment/payment reversals, restore chains and audit-safe purge", async (context) => {
+  const f = await setup(context);
+  const manual = await f.mutate("createLedgerEntry", { supplierId: f.supplier.id, type: "adjustment", sourceType: "manual_debt", amountKurus: -200000 });
+  const opening = await f.mutate("createLedgerEntry", { supplierId: f.supplier.id, type: "opening_balance", amountKurus: -425000 });
+  assert.equal(manual.ledgerEntry.sourceType, "manual_debt");
+  assert.equal(opening.ledgerEntry.sourceType, "opening_balance");
+  assert.deepEqual(await f.totals(), [625000, 0, 625000]);
+  const doc = await f.document();
+  const payment = await f.mutate("createPayment", { supplierId: f.supplier.id, amountKurus: 75000, paymentDate: "2026-09-05", documentId: doc.id });
+  const shipment = await f.shipment();
+  await f.mutate("declineShipmentStock", shipment.id, {});
+  const posted = await f.mutate("accountShipmentWithoutStock", shipment.id, {});
+  await assert.rejects(f.mutate("reverseLedgerEntry", posted.ledgerEntry.id, { reason: "Wrong path" }), error => error.code === "USE_SHIPMENT_REVERSAL");
+  const manualReverse = await f.mutate("reverseLedgerEntry", manual.ledgerEntry.id, { reason: "Ortak sebep" });
+  const shipmentReverse = await f.mutate("reverseShipmentAccounting", shipment.id, { reason: "Ortak sebep" });
+  await f.mutate("reversePayment", payment.payment.id, { reason: "Ortak sebep" });
+  assert.deepEqual(await f.totals(), [425000, 0, 425000]);
+  const trash = await f.service.listTrash(ADMIN);
+  assert.equal(trash.records.filter(row => row.reason === "Ortak sebep").length, 3);
+  const restoredManual = await f.mutate("restoreTrashRecord", "ledger", manualReverse.ledgerEntry.id, { reason: "Geri al" });
+  const restoredPayment = await f.mutate("restoreTrashRecord", "payment", payment.payment.id, { reason: "Geri al" });
+  const restoredShipment = await f.mutate("restoreTrashRecord", "ledger", shipmentReverse.ledgerEntry.id, { reason: "Geri al" });
+  assert.equal(restoredManual.ledgerEntry.reinstatementOf, manual.ledgerEntry.id);
+  assert.equal(restoredPayment.payment.reinstatementOf, payment.payment.id);
+  assert.equal(restoredShipment.ledgerEntry.restoresReversalId, shipmentReverse.ledgerEntry.id);
+  assert.deepEqual(await f.totals(), [675000, 75000, 600000]);
+  await f.mutate("restoreTrashRecord", "ledger", shipmentReverse.ledgerEntry.id, {});
+  assert.deepEqual(await f.totals(), [675000, 75000, 600000]);
+  const second = await f.mutate("reverseShipmentAccounting", shipment.id, { reason: "İkinci ters kayıt" });
+  assert.equal(second.ledgerEntry.reversalOf, restoredShipment.ledgerEntry.id);
+  await f.mutate("restoreTrashRecord", "ledger", second.ledgerEntry.id, {});
+  await f.mutate("removeShipment", shipment.id, { reason: "Sevkiyat kaldırıldı" });
+  assert.deepEqual(await f.totals(), [625000, 75000, 550000]);
+  await assert.rejects(f.mutate("purgeTrashRecord", "shipment", shipment.id), error => error.code === "FINANCIAL_HISTORY_PROTECTED");
+  const reversal = await f.mutate("reverseLedgerEntry", restoredManual.ledgerEntry.id, { reason: "Kalıcı görünümden kaldır" });
+  const beforeCount = (await f.store.read()).procurement.ledgerEntries.length;
+  await f.mutate("purgeTrashRecord", "ledger", reversal.ledgerEntry.id);
+  assert.equal((await f.store.read()).procurement.ledgerEntries.length, beforeCount);
+  await assert.rejects(f.mutate("restoreTrashRecord", "ledger", reversal.ledgerEntry.id, {}), error => error.code === "TRASH_RECORD_PURGED");
+  await f.mutate("reversePayment", restoredPayment.payment.id, { reason: "Ödeme kaldır" });
+  const before = await f.store.read();
+  await f.mutate("purgeTrashRecord", "payment", restoredPayment.payment.id);
+  const after = await f.store.read();
+  assert.equal(after.procurement.payments.length, before.procurement.payments.length);
+  assert.equal(after.procurement.ledgerEntries.length, before.procurement.ledgerEntries.length);
+});
+
+test("cari actions: stock YES preserves stock/accounting pipeline and no-stock refuses applied stock", async (context) => {
+  const f = await setup(context);
+  const shipment = await f.shipment();
+  await f.store.update(data => {
+    const row = data.workforceShipments.find(item => item.id === shipment.id);
+    const result = stockService.applyStockMovement(data.stockState, { requestId: "cari-stock-success", productId: f.product.stockProductId, locationId: row.destinationLocationId, quantity: 1, unit: "kg", type: "inbound_shipment", shipmentId: row.id, referenceType: "shipment", referenceId: row.id }, ADMIN, { now: new Date().toISOString() });
+    data.stockState = result.stockState;
+    Object.assign(row, { stockAppliedAt: new Date().toISOString(), stockMovementRefs: [result.movement.id], status: "onaylandı" });
+  });
+  const result = await f.mutate("accountShipmentAfterStock", shipment.id, {});
+  assert.equal(result.shipment.accountingSource, "stock_success");
+  assert.deepEqual(await f.totals(), [50000, 0, 50000]);
+  await assert.rejects(f.mutate("accountShipmentWithoutStock", shipment.id, {}), error => error.code === "STOCK_ALREADY_APPLIED");
+});

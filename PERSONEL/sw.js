@@ -1,0 +1,58 @@
+/* Personel PWA — scope: /personel/ */
+importScripts("/shared/scripts/pwa-release.js");
+self.MENU_SUITE_PWA_CONFIG = Object.freeze({
+  appId: "personel",
+  version: `${self.MENU_SUITE_PWA_RELEASE.id}-personel-role-icons-v2-personel-overview-dialog-v3-personel-notification-modal-v3-personel-stock-detail-v4-personel-locator-v2-personel-material-request-card-v4-personel-shipment-receipt-v3-storage-placement-v1-material-batch-v1-approved-ui-20261008-v2-critical-dialog-v1-tasks-v2-pwa-layer-v1-fixes-20261011-v2`,
+  scopePath: "/personel/",
+  offlineUrl: "/personel/offline.html",
+  offlineAssets: [
+    "/shared/styles/pwa-ui.css",
+    "/shared/styles/brand-identity.css?v=20260919-neutral-brand",
+    "/shared/scripts/brand-identity.js?v=20260929-role-brand-v1",
+    "/assets/app-icons/personel/icon-192.png",
+    "/assets/app-icons/personel/notification-badge-96.png",
+    "/assets/app-icons/personel/master.svg"
+  ],
+  precache: [
+    "/personel/personel-stock-shipment.css?v=20261001-product-detail-v1",
+    "/personel/personel.css?v=20260927-shipment-layout-v5",
+    "/personel/personel-compact.css?v=20261004-shipment-receipt-v3&approved=20261008-v1",
+    "/personel/notifications.css?v=20261004-simple-modal-v3",
+    "/personel/recete-embed/styles/recipe.css?v=20260929-recipe-surface-v3",
+    "/personel/personel-profile.css?v=20260927-profile-layout-v1",
+    "/personel/stock-tabs.css?v=20260930-stock-tabs-v1",
+    "/personel/personel-overview.css?v=20261004-overview-dialog-v1&approved=20261008-v1&critical=20261008-v1",
+    "/personel/personel-stock-revision.css?v=20261004-stock-detail-v4&fixes=20261011-v2",
+    "/personel/personel-locator.css?v=20261004-locator-v2&approved=20261008-v1",
+    "/personel/material-requests.css?v=20261004-material-request-card-v4",
+    "/personel/tasks-revision.css?v=20261008-v2",
+    "/shared/scripts/task-state.js?v=20261008-v1",
+    "/personel/personel.js?v=20261005-storage-placement-v1&batch=20261008-v1&approved=20261008-v2&critical=20261008-v1&tasks=20261008-v2&fixes=20261011-v2",
+    "/personel/workforce.js?v=20261004-shipment-receipt-v3&batch=20261008-v1&approved=20261008-v2&tasks=20261008-v2&fixes=20261011-v2",
+    "/personel/notifications.js?v=20261004-simple-modal-v3&fixes=20261011-v2",
+    "/shared/styles/panel-foundation.css",
+    "/shared/styles/brand-identity.css?v=20260919-neutral-brand",
+    "/shared/scripts/save-coordinator.js",
+    "/shared/scripts/panel-theme.js?v=20260919-neutral-brand",
+    "/shared/scripts/zxing-browser.min.js?v=0.2.1",
+    "/shared/scripts/stock-lookup.js?v=20261004-locator-v2&approved=20261008-v1",
+    "/shared/scripts/leave-period.js?v=20261008-approved-ui-v1",
+    "/shared/scripts/live-preview-receiver.js",
+    "/shared/scripts/pwa-client.js?v=20260919-neutral-brand",
+    "/shared/scripts/brand-identity.js?v=20260929-role-brand-v1",
+    "/assets/fonts/poppins-regular.ttf",
+    "/assets/fonts/poppins-semibold.ttf",
+    "/assets/fonts/poppins-bold.ttf",
+    "/assets/app-icons/personel/master.svg"
+  ],
+  staticPrefixes: ["/personel/", "/shared/", "/assets/"],
+  neverCachePrefixes: ["/api/", "/yonetici/", "/panel/"],
+  excludedNavigationPrefixes: [],
+  excludedClientPrefixes: [],
+  fallbackRoot: "/personel/",
+  allowedRoots: ["/personel/"],
+  icon: "/assets/app-icons/personel/icon-192.png",
+  badge: "/assets/app-icons/personel/notification-badge-96.png",
+  notificationTitle: "Personel"
+});
+importScripts("/shared/scripts/pwa-sw-runtime.js");

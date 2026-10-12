@@ -1,0 +1,118 @@
+.personel-dashboard { --personel-sidebar-open: 252px; }
+
+.stock-module-section {
+  min-width: 0;
+  padding: clamp(14px, 2vw, 24px);
+  overflow: auto;
+}
+
+.stock-module-hero,
+.stock-module-form,
+.stock-module-card {
+  min-width: 0;
+  border: 1px solid var(--panel-line);
+  border-radius: var(--panel-card-radius);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+}
+
+.stock-module-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  padding: clamp(20px, 3vw, 32px);
+}
+
+.stock-module-hero > div,
+.stock-module-form > div { min-width: 0; }
+.stock-module-hero h3,
+.stock-module-form h3,
+.stock-module-card h3 { margin: 5px 0 0; color: var(--panel-ink); }
+.stock-module-hero h3,
+.stock-module-form h3 { font-size: clamp(22px, 3vw, 34px); }
+.stock-module-hero p,
+.stock-module-form p,
+.stock-module-card p { margin: 8px 0 0; color: var(--panel-muted); line-height: 1.6; }
+.stock-module-hero .ui-button { flex: 0 0 auto; }
+
+.stock-module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.stock-module-card { padding: 20px; }
+.stock-module-card > span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--panel-chip);
+  color: var(--panel-primary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.stock-module-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, .8fr) auto;
+  align-items: end;
+  gap: 18px;
+  padding: clamp(20px, 3vw, 32px);
+}
+
+.stock-module-form label { display: grid; gap: 7px; color: var(--panel-muted); font-size: 12px; font-weight: 700; }
+.stock-module-form input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--panel-line);
+  border-radius: 11px;
+  background: var(--panel-surface-soft);
+  color: var(--panel-ink);
+  padding: 0 13px;
+}
+
+@media (max-width: 780px) {
+  .stock-module-hero,
+  .stock-module-form { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
+  .stock-module-hero .ui-button,
+  .stock-module-form .ui-button { width: 100%; }
+}
+
+/* The workspace header is the single page title.  Top-level section shells stay
+   open so the real forms and data cards do not sit inside another decorative card. */
+.personel-dashboard .stock-module-hero,
+.personel-dashboard .stock-module-form,
+.personel-dashboard .profile-card,
+.personel-dashboard[data-active-section="shipment"] .wf-catalog-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.personel-dashboard .stock-module-hero,
+.personel-dashboard .stock-module-form {
+  padding: 0;
+}
+
+.personel-dashboard .profile-card {
+  width: 100%;
+  padding: 0;
+}
+
+.personel-dashboard[data-active-section="shipment"] .wf-catalog-card {
+  padding: 0;
+}
+
+.personel-dashboard[data-active-section="barcode"] .stock-module-form > div:first-child,
+.personel-dashboard[data-active-section="materialLocation"] .stock-module-hero > div:first-child,
+.personel-dashboard[data-active-section="stockAction"] .stock-module-hero > div:first-child,
+.personel-dashboard[data-active-section="count"] .stock-module-hero > div:first-child,
+.personel-dashboard[data-active-section="notifications"] .stock-module-hero > div:first-child {
+  display: none;
+}
