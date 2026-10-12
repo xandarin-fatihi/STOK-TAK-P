@@ -1,7 +1,22 @@
 # Commit hazırlık kontrolü — 12.10.2026
 
 Güncel masaüstü sürümünden kaynak kopyası hazırlanmıştır. Asıl çalışan
-kurulum değiştirilmemiştir. Commit ve push yapılmamıştır.
+kurulum değiştirilmemiştir. İlk hazırlık çalışmasında commit ve push yapılmamıştır.
+
+## Raf taslağı eşitlemesi — 12.10.2026
+
+Eşitleme başlangıcında kullanıcı tarafından oluşturulmuş `53f166e STOK`
+commit'i ve temiz çalışma ağacı görüldü; mevcut commit korunmuştur.
+272 ortak kaynak dosyası masaüstü sürümüyle karşılaştırıldı; daha önceki
+yalnız boşluk/taşınabilir test yolu düzenlemeleri dışında yeni uygulama
+farkı bulunmadı. Ortam örneği ve OCR fixture yolu repo için taşınabilir kalır.
+
+`TASARIM/atolye-video-raf-plani.html` ayrı açılan tasarım referansı olarak
+eklendi. Plan yaklaşık konumlar içerir; video, kareleri ve ürün eşleştirmeleri
+depoya eklenmedi. Uygulama entegrasyonu yapılmadı. Kullanıcının sonraki açık
+isteğiyle bu eşitleme yerel `main` commit'ine hazırlanmıştır. Uzak GitHub
+bağlantısındaki hesap doğrulaması tamamlanamadığından gönderim ayrıca
+doğrulanmalıdır; yerel commit tek başına başarılı push anlamına gelmez.
 
 ## Doğrulananlar
 

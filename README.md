@@ -47,6 +47,14 @@ kontrol edilmelidir.
 - `PERSONEL`: personel paneli.
 - `YÖNETİCİ PANELİ`: yönetici paneli ve belge modülü.
 - `LOCAL`: başlatma/durdurma ve bakım araçları.
+- `TASARIM`: uygulamaya henüz entegre edilmemiş tasarım referansları.
+
+## Video referanslı raf planı
+
+`TASARIM/atolye-video-raf-plani.html` tarayıcıda ayrı açılabilen taslaktır.
+Raf noktası seçme, yumuşak yakınlaşma, +/− ve sürükleyerek gezinme içerir.
+Plan yaklaşık yerleşimdir; ürün–raf eşleştirmesi yapılmamıştır ve mevcut
+Malzeme Nerede ekranının yerine geçmez. Ayrıntılar `TASARIM/README.md` içinde.
 
 `LOCAL/prepare-workshop-stock.js` yalnız açıkça istenen temiz başlangıç için
 hazırlanmış bakım aracıdır; normal kurulum adımı değildir. Veri temizleme
